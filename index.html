@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cetak Rekap Olshop - Exceed Express</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Pustaka React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Pustaka Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- PUSTAKA UNTUK EXPORT JPG & PDF -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        body { background-color: #f3f4f6; font-family: 'Arial', sans-serif; color: #000; }
+        
+        /* CSS KHUSUS UNTUK PRINT KERTAS (MENGHILANGKAN TOMBOL & MENGATUR MARGIN) */
+        @media print {
+            @page { size: landscape; margin: 10mm; }
+            body { background-color: #fff; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .cetak-container { box-shadow: none !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important;}
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+
+        /* Tabel ala Excel */
+        .excel-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .excel-table th, .excel-table td { border: 1px solid #000; padding: 4px 6px; }
+        .excel-table th { background-color: #f3f4f6; text-align: center; font-weight: bold; }
+        
+        .box-summary { border: 1px solid #000; font-size: 12px; font-weight: bold; background-color: #fff; }
+        .box-summary td { border: 1px solid #000; padding: 4px 8px; }
+
+        /* Loading Overlay saat export */
+        #export-loading {
+            display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.9);
+            z-index: 9999; flex-direction: column; align-items: center; justify-content: center;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    
+    <!-- Animasi Loading saat Export PDF/JPG -->
+    <div id="export-loading">
+        <i class="fas fa-circle-notch fa-spin text-4xl text-orange-500 mb-4"></i>
+        <h2 class="text-xl font-bold text-slate-800">Mempersiapkan Dokumen...</h2>
+        <p class="text-slate-500 text-sm mt-1">Harap tunggu, jangan tutup halaman ini.</p>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // =================================================================================
+        // PASTE URL GOOGLE SCRIPT ANDA DI BAWAH INI
+        // =================================================================================
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzVHojspm17WSZU42RaMtgiNWJikRfGyTlPh1FczlDJS9JL52PxX0d9RpkNJYM4g424/exec"; 
+
+        const formatCurr = (amount) => {
+            if (!amount) return '-';
+            return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 }).format(amount);
+        };
+
+        const getFinancials = (pkg) => {
+            const hBarang = Number(pkg.hargaPaket) || 0;
+            const tagihan = Number(pkg.totalTagihan) || 0;
+            const oTambahan = Number(pkg.tambahanOngkir) || 0;
+            let oDasar = Number(pkg.ongkirDasar) || 0;
+            if (oDasar === 0) oDasar = (tagihan - hBarang > 0 ? tagihan - hBarang : 0) - oTambahan;
+            return { hBarang, tagihan, oDasar: Math.max(0, oDasar), oTambahan, oTotal: Math.max(0, oDasar) + oTambahan };
+        };
+
+        function App() {
+            const [packages, setPackages] = useState([]);
+            const [olshopList, setOlshopList] = useState([]);
+            const [isLoading, setIsLoading] = useState(false);
+            
+            // Filter States
+            const [selectedOlshop, setSelectedOlshop] = useState('');
+            const [selectedDate, setSelectedDate] = useState('');
+
+            // Referensi untuk area yang akan diexport
+            const printAreaRef = useRef(null);
+
+            // Fetch Data
+            const syncData = async () => {
+                setIsLoading(true);
+                try {
+                    const response = await fetch(`${SCRIPT_URL}?action=getInitData&t=${new Date().getTime()}`);
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        setPackages(result.data.packages || []);
+                        const olshops = [...new Set((result.data.packages || []).map(p => String(p.olshopName).trim().toUpperCase()))];
+                        setOlshopList(olshops.filter(o => o !== '').sort());
+                    } else { alert("Gagal memuat data dari server."); }
+                } catch (error) { alert("Koneksi error. Gagal menarik data."); } 
+                finally { setIsLoading(false); }
+            };
+
+            useEffect(() => { syncData(); }, []);
+
+            // Proses Filter Data
+            const { filteredData, summary } = useMemo(() => {
+                let filtered = packages;
+                if (selectedOlshop) { filtered = filtered.filter(p => String(p.olshopName).trim().toUpperCase() === selectedOlshop); } 
+                else { filtered = []; }
+
+                if (selectedDate) {
+                    filtered = filtered.filter(p => {
+                        let pDateStr = p.dateString || p.tanggal || '';
+                        if (!pDateStr) return false;
+                        try {
+                            const d = new Date(pDateStr);
+                            if (!isNaN(d.getTime())) {
+                                const y = d.getFullYear();
+                                const m = String(d.getMonth() + 1).padStart(2, '0');
+                                const day = String(d.getDate()).padStart(2, '0');
+                                return `${y}-${m}-${day}` === selectedDate;
+                            }
+                            return pDateStr.split('T')[0] === selectedDate;
+                        } catch(e) { return false; }
+                    });
+                }
+
+                let s_sukses = 0, s_pending = 0, s_cancel = 0;
+                let uangCASH = 0, potonganTF = 0;
+
+                filtered.forEach(pkg => {
+                    const stat = String(pkg.status).toLowerCase().replace(' ', '_');
+                    const metode = String(pkg.metodeBayar).trim().toUpperCase();
+                    const { hBarang, oTotal } = getFinancials(pkg);
+
+                    if (stat === 'sukses') {
+                        s_sukses++;
+                        if (metode === 'CASH' || metode === 'TF KANTOR' || metode === 'COD') { uangCASH += hBarang; } 
+                        else if (metode === 'TF OLSHOP') { potonganTF += oTotal; }
+                    } else if (stat === 'pending') { s_pending++; }
+                    else if (stat === 'cancel') { s_cancel++; }
+                });
+
+                return {
+                    filteredData: filtered,
+                    summary: {
+                        sukses: s_sukses, pending: s_pending, cancel: s_cancel,
+                        setoranKotor: uangCASH, potonganTF: potonganTF, sudahSetor: uangCASH - potonganTF
+                    }
+                };
+            }, [packages, selectedOlshop, selectedDate]);
+
+            const getIndoDate = (dateStr) => {
+                if(!dateStr) return '-';
+                try {
+                    const d = new Date(dateStr);
+                    const months = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+                    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+                } catch(e) { return dateStr; }
+            };
+
+            // =========================================================================
+            // FUNGSI EKSPOR JPG & PDF (MENGGUNAKAN HTML2CANVAS & JSPDF)
+            // =========================================================================
+            const executeExport = async (format) => {
+                if (!printAreaRef.current) return;
+                
+                const loadingEl = document.getElementById('export-loading');
+                loadingEl.style.display = 'flex'; // Munculkan layar loading
+
+                // Beri sedikit jeda agar DOM sempat me-render loading screen
+                setTimeout(async () => {
+                    try {
+                        const element = printAreaRef.current;
+                        // Tangkap gambar elemen dengan html2canvas
+                        const canvas = await html2canvas(element, { 
+                            scale: 2, // Kualitas HD (Retina)
+                            useCORS: true, // Izinkan ambil gambar dari luar (logo)
+                            backgroundColor: '#ffffff' // Latar belakang pasti putih
+                        });
+
+                        const imgData = canvas.toDataURL('image/jpeg', 1.0);
+                        const fileName = `Rekap_${selectedOlshop.replace(/\s+/g, '_')}_${selectedDate || 'Semua'}`;
+
+                        if (format === 'jpg') {
+                            // Proses Download JPG
+                            const link = document.createElement('a');
+                            link.href = imgData;
+                            link.download = `${fileName}.jpg`;
+                            link.click();
+                        } 
+                        else if (format === 'pdf') {
+                            // Proses Download PDF (Menyesuaikan ukuran gambar ke A4 Landscape)
+                            const { jsPDF } = window.jspdf;
+                            const pdf = new jsPDF('l', 'mm', 'a4'); // 'l' = landscape
+                            
+                            const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
+                            
+                            // Hitung rasio agar gambar proporsional di dalam kertas PDF
+                            const imgProps = pdf.getImageProperties(imgData);
+                            const ratio = imgProps.width / imgProps.height;
+                            
+                            // Cek apakah gambar lebih lebar dari kertas
+                            let finalWidth = pdfWidth - 20; // margin 10mm kiri-kanan
+                            let finalHeight = finalWidth / ratio;
+
+                            // Jika tinggi gambar melebihi kertas, sesuaikan tingginya
+                            if (finalHeight > (pdfHeight - 20)) {
+                                finalHeight = pdfHeight - 20; // margin atas-bawah
+                                finalWidth = finalHeight * ratio;
+                            }
+
+                            // Letakkan gambar tepat di tengah kertas PDF
+                            const marginX = (pdfWidth - finalWidth) / 2;
+                            const marginY = 10; // margin atas
+
+                            pdf.addImage(imgData, 'JPEG', marginX, marginY, finalWidth, finalHeight);
+                            pdf.save(`${fileName}.pdf`);
+                        }
+
+                    } catch (err) {
+                        console.error("Gagal export:", err);
+                        alert("Terjadi kesalahan saat memproses gambar. Pastikan koneksi internet stabil.");
+                    } finally {
+                        loadingEl.style.display = 'none'; // Sembunyikan loading
+                    }
+                }, 500);
+            };
+
+            return (
+                <div className="min-h-screen pb-10">
+                    {/* PANEL KONTROL (Tidak akan terprint) */}
+                    <div className="no-print bg-slate-800 text-white p-4 shadow-md sticky top-0 z-50 flex flex-col lg:flex-row gap-4 justify-between items-center mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-orange-500 p-2 rounded-lg"><i className="fas fa-file-invoice text-xl"></i></div>
+                            <div>
+                                <h1 className="font-bold text-lg leading-tight">Mesin Cetak Rekap (A4 Ready)</h1>
+                                <p className="text-xs text-slate-300">Exceed Express Ekspedisi</p>
+                            </div>
+                        </div>
+
+                        {/* Kontrol Filter & Tombol-tombol Ekspor */}
+                        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                            <select 
+                                value={selectedOlshop} 
+                                onChange={(e) => setSelectedOlshop(e.target.value)}
+                                className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full sm:w-48 font-bold text-orange-300"
+                            >
+                                <option value="">-- Pilih Olshop --</option>
+                                {olshopList.map((o, i) => <option key={i} value={o}>{o}</option>)}
+                            </select>
+
+                            <input 
+                                type="date" 
+                                value={selectedDate} 
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full sm:w-auto text-orange-300"
+                            />
+
+                            <button onClick={syncData} disabled={isLoading} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-bold w-full sm:w-auto border border-blue-500">
+                                {isLoading ? <i className="fas fa-spin fa-sync-alt"></i> : <i className="fas fa-cloud-download-alt"></i>}
+                            </button>
+                            
+                            <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700 w-full sm:w-auto">
+                                <button onClick={() => executeExport('jpg')} disabled={!selectedOlshop || filteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center justify-center flex-1 ${!selectedOlshop || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-blue-400'}`}>
+                                    <i className="fas fa-image mr-1.5"></i> JPG
+                                </button>
+                                <button onClick={() => executeExport('pdf')} disabled={!selectedOlshop || filteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center justify-center flex-1 border-l border-slate-700 ${!selectedOlshop || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-red-400'}`}>
+                                    <i className="fas fa-file-pdf mr-1.5"></i> PDF
+                                </button>
+                                <button onClick={() => window.print()} disabled={!selectedOlshop || filteredData.length === 0} className={`px-4 py-1.5 text-xs font-bold rounded flex items-center justify-center flex-1 border-l border-slate-700 ${!selectedOlshop || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
+                                    <i className="fas fa-print mr-1.5"></i> Print Mesin
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* KERTAS PRINT (Akan terlihat di layar dan diexport) */}
+                    {!selectedOlshop ? (
+                        <div className="no-print text-center text-gray-500 mt-20">
+                            <i className="fas fa-hand-pointer text-4xl mb-3"></i>
+                            <p>Silakan pilih <b>Nama Olshop</b> di panel atas untuk melihat dan mencetak laporan.</p>
+                        </div>
+                    ) : (
+                        // =========================================================================
+                        // AREA INI YANG AKAN DI-TANGKAP (CAPTURE) MENJADI GAMBAR / PDF
+                        // =========================================================================
+                        <div ref={printAreaRef} className="cetak-container bg-white mx-auto max-w-[1100px] p-6 sm:p-8 shadow-xl border border-gray-200 flex flex-col min-h-full">
+                            
+                            {/* KOP LAPORAN */}
+                            <div className="flex justify-between items-start mb-6">
+                                {/* Kiri: Logo Asli, Slogan, & Nama Olshop */}
+                                <div className="flex items-center gap-4">
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-[120px] shrink-0 border border-slate-200 rounded p-1 bg-slate-50 flex items-center justify-center">
+                                            {/* MENGGUNAKAN DIRECT LINK GOOGLE DRIVE */}
+                                            <img 
+                                                src="https://drive.google.com/uc?id=1xBkWoexBfNOe8WKhDp8WBkh7hjvK4Yub" 
+                                                alt="Exceed Express Logo" 
+                                                crossOrigin="anonymous"
+                                                className="w-full h-auto object-contain"
+                                                onError={(e) => {
+                                                    // Jika gambar gagal dimuat, tampilkan kotak darurat
+                                                    e.target.style.display = 'none';
+                                                    e.target.nextSibling.style.display = 'flex';
+                                                }}
+                                            />
+                                            {/* Fallback Darurat jika logo gagal dimuat */}
+                                            <div style={{display: 'none'}} className="w-full h-[50px] bg-[#0f172a] flex-col justify-center items-center text-white italic rounded-sm">
+                                                <span className="text-xl font-black leading-none text-orange-500">e<span className="text-blue-300">X</span></span>
+                                                <span className="text-[7px] mt-0.5 font-sans not-italic font-bold tracking-widest uppercase">Exceed Express</span>
+                                            </div>
+                                        </div>
+                                        {/* SLOGAN BARU */}
+                                        <span className="text-[10px] font-bold italic text-slate-700 mt-1.5 whitespace-nowrap">"Antar tuntas harga pas"</span>
+                                    </div>
+
+                                    <div className="flex flex-col gap-1">
+                                        <div className="border border-black px-4 py-1.5 font-bold text-sm min-w-[250px] uppercase bg-gray-50">{selectedOlshop}</div>
+                                        <div className="border border-black px-4 py-1.5 text-sm font-semibold min-w-[250px]">{selectedDate ? getIndoDate(selectedDate) : 'Semua Tanggal'}</div>
+                                    </div>
+                                </div>
+
+                                {/* Tengah: Keuangan */}
+                                <div>
+                                    <table className="box-summary">
+                                        <tbody>
+                                            <tr>
+                                                <td className="bg-gray-100 w-[120px]">Setoran</td>
+                                                <td className="text-right w-[150px]">{formatCurr(summary.setoranKotor)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="bg-gray-100">TF/VOLUME</td>
+                                                <td className="text-right text-red-600">{formatCurr(summary.potonganTF)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="bg-gray-100">SUDAH SETOR</td>
+                                                <td className="text-right">{formatCurr(summary.sudahSetor)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Kanan: Status */}
+                                <div>
+                                    <table className="box-summary">
+                                        <tbody>
+                                            <tr>
+                                                <td className="w-[100px] bg-green-500 text-white text-center">SUKSES</td>
+                                                <td className="text-center w-[50px] font-black">{summary.sukses}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="bg-yellow-400 text-center text-yellow-900">PENDING</td>
+                                                <td className="text-center font-black">{summary.pending}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="bg-red-600 text-white text-center">CANCEL</td>
+                                                <td className="text-center font-black">{summary.cancel}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* TABEL DATA PUSAT */}
+                            <table className="excel-table">
+                                <thead>
+                                    <tr>
+                                        <th className="w-8">NO</th>
+                                        <th className="w-32">Nama Customer</th>
+                                        <th className="w-24">No HP Customer</th>
+                                        <th className="w-48">Alamat Lengkap</th>
+                                        <th className="w-20">Harga Paket</th>
+                                        <th className="w-20">Ongkir Dasar</th>
+                                        <th className="w-20">Tambahan Ongkir</th>
+                                        <th className="w-20">Total Tagihan</th>
+                                        <th className="w-20">Status</th>
+                                        <th className="w-20">Metode Bayar</th>
+                                        <th>Kurir ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredData.length === 0 ? (
+                                        <tr><td colSpan="11" className="text-center py-4 text-gray-500 font-bold">Tidak ada data untuk tanggal ini.</td></tr>
+                                    ) : (
+                                        filteredData.map((pkg, idx) => {
+                                            const stat = String(pkg.status).toUpperCase();
+                                            const isPending = stat === 'PENDING';
+                                            const isCancel = stat === 'CANCEL';
+                                            const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
+
+                                            return (
+                                                <tr key={idx} className={isPending ? "bg-yellow-100" : (isCancel ? "bg-red-100" : "")}>
+                                                    <td className="text-center font-bold">{idx + 1}</td>
+                                                    <td>{pkg.customerName}</td>
+                                                    <td className="text-center">{pkg.customerPhone || '-'}</td>
+                                                    <td>{pkg.address}</td>
+                                                    <td className="text-right">{hBarang === 0 ? '-' : formatCurr(hBarang)}</td>
+                                                    <td className="text-right">{oDasar === 0 ? '-' : formatCurr(oDasar)}</td>
+                                                    <td className="text-right">{oTambahan === 0 ? '-' : formatCurr(oTambahan)}</td>
+                                                    <td className="text-right font-bold">{tagihan === 0 ? '-' : formatCurr(tagihan)}</td>
+                                                    <td className={`text-center font-bold ${isPending ? 'bg-yellow-400 text-yellow-900' : (isCancel ? 'bg-red-600 text-white' : 'text-green-700')}`}>
+                                                        {stat}
+                                                    </td>
+                                                    <td className="text-center">{pkg.metodeBayar || '-'}</td>
+                                                    <td className="text-xs">{String(pkg.kurirId || '-').split('@')[0]}</td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+
+                            {/* FOOTER ALAMAT KANTOR (MUNCUL DI BAWAH TABEL) */}
+                            <div className="mt-8 text-center text-[11px] font-bold text-slate-600 border-t-2 border-slate-800 pt-3 flex flex-col items-center justify-center">
+                                <p>Exceed Express Logistics</p>
+                                <p className="font-medium mt-0.5">Alamat Kantor : Jalan Garuda, BTN Bawah Jayapura, Papua.  No. HP 08215006669</p>
+                            </div>
+
+                        </div>
+                        // =========================================================================
+                        // AKHIR AREA CETAK
+                        // =========================================================================
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
