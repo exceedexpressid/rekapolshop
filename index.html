@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cetak Rekap Olshop - Exceed Express</title> 
+    <title>Cetak Rekap - Exceed Express</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -23,7 +23,7 @@
     <style>
         body { background-color: #f3f4f6; font-family: 'Arial', sans-serif; color: #000; }
         
-        /* CSS KHUSUS UNTUK PRINT KERTAS (MENGHILANGKAN TOMBOL & MENGATUR MARGIN) */
+        /* CSS KHUSUS UNTUK PRINT KERTAS */
         @media print {
             @page { size: landscape; margin: 10mm; }
             body { background-color: #fff; }
@@ -50,7 +50,6 @@
 </head>
 <body class="antialiased">
     
-    <!-- Animasi Loading saat Export PDF/JPG -->
     <div id="export-loading">
         <i class="fas fa-circle-notch fa-spin text-4xl text-orange-500 mb-4"></i>
         <h2 class="text-xl font-bold text-slate-800">Mempersiapkan Dokumen...</h2>
@@ -84,25 +83,27 @@
         function App() {
             const [packages, setPackages] = useState([]);
             const [olshopList, setOlshopList] = useState([]);
+            const [kurirList, setKurirList] = useState([]);
             const [isLoading, setIsLoading] = useState(false);
             
-            // Filter States
-            const [selectedOlshop, setSelectedOlshop] = useState('');
+            const [rekapMode, setRekapMode] = useState('olshop');
+            const [selectedValue, setSelectedValue] = useState('');
             const [selectedDate, setSelectedDate] = useState('');
 
-            // Referensi untuk area yang akan diexport
             const printAreaRef = useRef(null);
 
-            // Fetch Data
             const syncData = async () => {
                 setIsLoading(true);
                 try {
                     const response = await fetch(`${SCRIPT_URL}?action=getInitData&t=${new Date().getTime()}`);
                     const result = await response.json();
                     if (result.status === 'success') {
-                        setPackages(result.data.packages || []);
-                        const olshops = [...new Set((result.data.packages || []).map(p => String(p.olshopName).trim().toUpperCase()))];
-                        setOlshopList(olshops.filter(o => o !== '').sort());
+                        const pkgs = result.data.packages || [];
+                        setPackages(pkgs);
+                        const olshops = [...new Set(pkgs.map(p => String(p.olshopName).trim().toUpperCase()))].filter(Boolean).sort();
+                        const kurirs = [...new Set(pkgs.map(p => String(p.kurirId || '').split('@')[0].trim().toUpperCase()))].filter(Boolean).sort();
+                        setOlshopList(olshops);
+                        setKurirList(kurirs);
                     } else { alert("Gagal memuat data dari server."); }
                 } catch (error) { alert("Koneksi error. Gagal menarik data."); } 
                 finally { setIsLoading(false); }
@@ -110,11 +111,19 @@
 
             useEffect(() => { syncData(); }, []);
 
-            // Proses Filter Data
+            // =================================================================================
+            // LOGIKA AKUNTANSI (SINKRON 100% DENGAN MASTER ADMIN & APPSHEET)
+            // =================================================================================
             const { filteredData, summary } = useMemo(() => {
                 let filtered = packages;
-                if (selectedOlshop) { filtered = filtered.filter(p => String(p.olshopName).trim().toUpperCase() === selectedOlshop); } 
-                else { filtered = []; }
+                
+                if (selectedValue) {
+                    if (rekapMode === 'olshop') {
+                        filtered = filtered.filter(p => String(p.olshopName).trim().toUpperCase() === selectedValue);
+                    } else {
+                        filtered = filtered.filter(p => String(p.kurirId || '').split('@')[0].trim().toUpperCase() === selectedValue);
+                    }
+                } else { filtered = []; }
 
                 if (selectedDate) {
                     filtered = filtered.filter(p => {
@@ -134,29 +143,65 @@
                 }
 
                 let s_sukses = 0, s_pending = 0, s_cancel = 0;
-                let uangCASH = 0, potonganTF = 0;
+                let setoran = 0; 
+                let tfVolume = 0; 
+                let sudahSetor = 0; 
 
                 filtered.forEach(pkg => {
                     const stat = String(pkg.status).toLowerCase().replace(' ', '_');
                     const metode = String(pkg.metodeBayar).trim().toUpperCase();
-                    const { hBarang, oTotal } = getFinancials(pkg);
+                    const isCair = String(pkg.statusPencairan).toLowerCase() === 'cair';
+                    const { hBarang, oDasar, oTambahan, oTotal } = getFinancials(pkg);
 
                     if (stat === 'sukses') {
                         s_sukses++;
-                        if (metode === 'CASH' || metode === 'TF KANTOR' || metode === 'COD') { uangCASH += hBarang; } 
-                        else if (metode === 'TF OLSHOP') { potonganTF += oTotal; }
-                    } else if (stat === 'pending') { s_pending++; }
-                    else if (stat === 'cancel') { s_cancel++; }
+                        let currentSetoran = 0;
+                        let currentTfVolume = 0;
+
+                        if (rekapMode === 'olshop') {
+                            // --- LOGIKA OLSHOP ---
+                            // Setoran = Harga Barang (Untuk paket CASH, COD, TF KANTOR)
+                            if (metode === 'CASH' || metode === 'COD' || metode === 'TF KANTOR') {
+                                currentSetoran = hBarang;
+                            }
+                            // TF/Volume = Ongkir Dasar + Tambahan (Hanya jika TF OLSHOP)
+                            if (metode === 'TF OLSHOP') {
+                                currentTfVolume = oTotal;
+                            }
+                        } else {
+                            // --- LOGIKA KURIR ---
+                            // Setoran = Harga Barang + Ongkir Dasar (Uang fisik yang dipegang kurir dari paket CASH/COD)
+                            if (metode === 'CASH' || metode === 'COD') {
+                                currentSetoran = hBarang + oDasar;
+                            }
+                            // Potongan Hak = Ongkir Tambahan (Hak kurir yang dipotong kantor karena metode TF)
+                            if (metode === 'TF OLSHOP' || metode === 'TF KANTOR') {
+                                currentTfVolume = oTambahan;
+                            }
+                        }
+
+                        setoran += currentSetoran;
+                        tfVolume += currentTfVolume;
+
+                        // SUDAH SETOR / CAIR
+                        if (isCair) {
+                            sudahSetor += (currentSetoran - currentTfVolume);
+                        }
+
+                    } else if (stat === 'pending' || stat === 'siap_antar' || stat === 'proses') { 
+                        s_pending++; 
+                    } else if (stat === 'cancel') { 
+                        s_cancel++; 
+                    }
                 });
+
+                const estimasiSetoran = setoran - tfVolume;
 
                 return {
                     filteredData: filtered,
-                    summary: {
-                        sukses: s_sukses, pending: s_pending, cancel: s_cancel,
-                        setoranKotor: uangCASH, potonganTF: potonganTF, sudahSetor: uangCASH - potonganTF
-                    }
+                    summary: { sukses: s_sukses, pending: s_pending, cancel: s_cancel, setoran, tfVolume, estimasiSetoran, sudahSetor }
                 };
-            }, [packages, selectedOlshop, selectedDate]);
+            }, [packages, rekapMode, selectedValue, selectedDate]);
 
             const getIndoDate = (dateStr) => {
                 if(!dateStr) return '-';
@@ -167,211 +212,157 @@
                 } catch(e) { return dateStr; }
             };
 
-            // =========================================================================
-            // FUNGSI EKSPOR JPG & PDF (MENGGUNAKAN HTML2CANVAS & JSPDF)
-            // =========================================================================
             const executeExport = async (format) => {
                 if (!printAreaRef.current) return;
-                
                 const loadingEl = document.getElementById('export-loading');
-                loadingEl.style.display = 'flex'; // Munculkan layar loading
+                loadingEl.style.display = 'flex'; 
 
-                // Beri sedikit jeda agar DOM sempat me-render loading screen
                 setTimeout(async () => {
                     try {
                         const element = printAreaRef.current;
-                        // Tangkap gambar elemen dengan html2canvas
-                        const canvas = await html2canvas(element, { 
-                            scale: 2, // Kualitas HD (Retina)
-                            useCORS: true, // Izinkan ambil gambar dari luar (logo)
-                            backgroundColor: '#ffffff' // Latar belakang pasti putih
-                        });
-
+                        const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
                         const imgData = canvas.toDataURL('image/jpeg', 1.0);
-                        const fileName = `Rekap_${selectedOlshop.replace(/\s+/g, '_')}_${selectedDate || 'Semua'}`;
+                        const fileName = `Rekap_${rekapMode.toUpperCase()}_${selectedValue.replace(/\s+/g, '_')}_${selectedDate || 'Semua'}`;
 
                         if (format === 'jpg') {
-                            // Proses Download JPG
                             const link = document.createElement('a');
                             link.href = imgData;
                             link.download = `${fileName}.jpg`;
                             link.click();
-                        } 
-                        else if (format === 'pdf') {
-                            // Proses Download PDF (Menyesuaikan ukuran gambar ke A4 Landscape)
+                        } else if (format === 'pdf') {
                             const { jsPDF } = window.jspdf;
-                            const pdf = new jsPDF('l', 'mm', 'a4'); // 'l' = landscape
-                            
+                            const pdf = new jsPDF('l', 'mm', 'a4');
                             const pdfWidth = pdf.internal.pageSize.getWidth();
                             const pdfHeight = pdf.internal.pageSize.getHeight();
-                            
-                            // Hitung rasio agar gambar proporsional di dalam kertas PDF
                             const imgProps = pdf.getImageProperties(imgData);
                             const ratio = imgProps.width / imgProps.height;
                             
-                            // Cek apakah gambar lebih lebar dari kertas
-                            let finalWidth = pdfWidth - 20; // margin 10mm kiri-kanan
+                            let finalWidth = pdfWidth - 20; 
                             let finalHeight = finalWidth / ratio;
 
-                            // Jika tinggi gambar melebihi kertas, sesuaikan tingginya
                             if (finalHeight > (pdfHeight - 20)) {
-                                finalHeight = pdfHeight - 20; // margin atas-bawah
+                                finalHeight = pdfHeight - 20;
                                 finalWidth = finalHeight * ratio;
                             }
 
-                            // Letakkan gambar tepat di tengah kertas PDF
                             const marginX = (pdfWidth - finalWidth) / 2;
-                            const marginY = 10; // margin atas
+                            const marginY = 10;
 
                             pdf.addImage(imgData, 'JPEG', marginX, marginY, finalWidth, finalHeight);
                             pdf.save(`${fileName}.pdf`);
                         }
-
                     } catch (err) {
                         console.error("Gagal export:", err);
-                        alert("Terjadi kesalahan saat memproses gambar. Pastikan koneksi internet stabil.");
+                        alert("Terjadi kesalahan saat memproses. Pastikan koneksi stabil.");
                     } finally {
-                        loadingEl.style.display = 'none'; // Sembunyikan loading
+                        loadingEl.style.display = 'none';
                     }
                 }, 500);
             };
 
             return (
                 <div className="min-h-screen pb-10">
-                    {/* PANEL KONTROL (Tidak akan terprint) */}
                     <div className="no-print bg-slate-800 text-white p-4 shadow-md sticky top-0 z-50 flex flex-col lg:flex-row gap-4 justify-between items-center mb-6">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 w-full lg:w-auto">
                             <div className="bg-orange-500 p-2 rounded-lg"><i className="fas fa-file-invoice text-xl"></i></div>
                             <div>
-                                <h1 className="font-bold text-lg leading-tight">Mesin Cetak Rekap (A4 Ready)</h1>
+                                <h1 className="font-bold text-lg leading-tight">Mesin Cetak Rekap (A4)</h1>
                                 <p className="text-xs text-slate-300">Exceed Express Ekspedisi</p>
                             </div>
                         </div>
 
-                        {/* Kontrol Filter & Tombol-tombol Ekspor */}
                         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                            <select 
-                                value={selectedOlshop} 
-                                onChange={(e) => setSelectedOlshop(e.target.value)}
-                                className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full sm:w-48 font-bold text-orange-300"
-                            >
-                                <option value="">-- Pilih Olshop --</option>
-                                {olshopList.map((o, i) => <option key={i} value={o}>{o}</option>)}
+                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 w-full sm:w-auto">
+                                <button onClick={() => { setRekapMode('olshop'); setSelectedValue(''); }} className={`flex-1 px-4 py-1.5 text-xs font-bold rounded transition-colors ${rekapMode === 'olshop' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
+                                    <i className="fas fa-store mr-1.5"></i> Rekap Olshop
+                                </button>
+                                <button onClick={() => { setRekapMode('kurir'); setSelectedValue(''); }} className={`flex-1 px-4 py-1.5 text-xs font-bold rounded transition-colors ${rekapMode === 'kurir' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
+                                    <i className="fas fa-motorcycle mr-1.5"></i> Rekap Kurir
+                                </button>
+                            </div>
+
+                            <select value={selectedValue} onChange={(e) => setSelectedValue(e.target.value)} className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full sm:w-48 font-bold text-orange-300">
+                                <option value="">-- Pilih {rekapMode === 'olshop' ? 'Olshop' : 'Kurir'} --</option>
+                                {(rekapMode === 'olshop' ? olshopList : kurirList).map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
                             </select>
 
-                            <input 
-                                type="date" 
-                                value={selectedDate} 
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full sm:w-auto text-orange-300"
-                            />
+                            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full sm:w-auto text-orange-300" />
 
                             <button onClick={syncData} disabled={isLoading} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-bold w-full sm:w-auto border border-blue-500">
                                 {isLoading ? <i className="fas fa-spin fa-sync-alt"></i> : <i className="fas fa-cloud-download-alt"></i>}
                             </button>
                             
                             <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700 w-full sm:w-auto">
-                                <button onClick={() => executeExport('jpg')} disabled={!selectedOlshop || filteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center justify-center flex-1 ${!selectedOlshop || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-blue-400'}`}>
-                                    <i className="fas fa-image mr-1.5"></i> JPG
-                                </button>
-                                <button onClick={() => executeExport('pdf')} disabled={!selectedOlshop || filteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center justify-center flex-1 border-l border-slate-700 ${!selectedOlshop || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-red-400'}`}>
-                                    <i className="fas fa-file-pdf mr-1.5"></i> PDF
-                                </button>
-                                <button onClick={() => window.print()} disabled={!selectedOlshop || filteredData.length === 0} className={`px-4 py-1.5 text-xs font-bold rounded flex items-center justify-center flex-1 border-l border-slate-700 ${!selectedOlshop || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
-                                    <i className="fas fa-print mr-1.5"></i> Print Mesin
-                                </button>
+                                <button onClick={() => executeExport('jpg')} disabled={!selectedValue || filteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex flex-1 items-center justify-center ${!selectedValue || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-blue-400'}`}><i className="fas fa-image mr-1.5"></i> JPG</button>
+                                <button onClick={() => executeExport('pdf')} disabled={!selectedValue || filteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex flex-1 items-center justify-center border-l border-slate-700 ${!selectedValue || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-red-400'}`}><i className="fas fa-file-pdf mr-1.5"></i> PDF</button>
+                                <button onClick={() => window.print()} disabled={!selectedValue || filteredData.length === 0} className={`px-4 py-1.5 text-xs font-bold rounded flex flex-1 items-center justify-center border-l border-slate-700 ${!selectedValue || filteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}><i className="fas fa-print mr-1.5"></i> Print</button>
                             </div>
                         </div>
                     </div>
 
-                    {/* KERTAS PRINT (Akan terlihat di layar dan diexport) */}
-                    {!selectedOlshop ? (
+                    {!selectedValue ? (
                         <div className="no-print text-center text-gray-500 mt-20">
-                            <i className="fas fa-hand-pointer text-4xl mb-3"></i>
-                            <p>Silakan pilih <b>Nama Olshop</b> di panel atas untuk melihat dan mencetak laporan.</p>
+                            <i className={`fas ${rekapMode === 'olshop' ? 'fa-store' : 'fa-motorcycle'} text-4xl mb-3`}></i>
+                            <p>Silakan pilih <b>Nama {rekapMode === 'olshop' ? 'Olshop' : 'Kurir'}</b> di panel atas untuk melihat laporan.</p>
                         </div>
                     ) : (
-                        // =========================================================================
-                        // AREA INI YANG AKAN DI-TANGKAP (CAPTURE) MENJADI GAMBAR / PDF
-                        // =========================================================================
-                        <div ref={printAreaRef} className="cetak-container bg-white mx-auto max-w-[1100px] p-6 sm:p-8 shadow-xl border border-gray-200 flex flex-col min-h-full">
+                        <div ref={printAreaRef} className="cetak-container bg-white mx-auto max-w-[1150px] p-6 sm:p-8 shadow-xl border border-gray-200 flex flex-col min-h-full">
                             
-                            {/* KOP LAPORAN */}
-                            <div className="flex justify-between items-start mb-6">
-                                {/* Kiri: Logo Asli, Slogan, & Nama Olshop */}
+                            <div className="flex justify-between items-start mb-6 gap-4">
                                 <div className="flex items-center gap-4">
                                     <div className="flex flex-col items-center">
                                         <div className="w-[120px] shrink-0 border border-slate-200 rounded p-1 bg-slate-50 flex items-center justify-center">
-                                            {/* MENGGUNAKAN DIRECT LINK GOOGLE DRIVE */}
-                                            <img 
-                                                src="https://drive.google.com/uc?id=1xBkWoexBfNOe8WKhDp8WBkh7hjvK4Yub" 
-                                                alt="Exceed Express Logo" 
-                                                crossOrigin="anonymous"
-                                                className="w-full h-auto object-contain"
-                                                onError={(e) => {
-                                                    // Jika gambar gagal dimuat, tampilkan kotak darurat
-                                                    e.target.style.display = 'none';
-                                                    e.target.nextSibling.style.display = 'flex';
-                                                }}
-                                            />
-                                            {/* Fallback Darurat jika logo gagal dimuat */}
+                                            <img src="https://drive.google.com/uc?id=1xBkWoexBfNOe8WKhDp8WBkh7hjvK4Yub" crossOrigin="anonymous" alt="Exceed Logo" className="w-full h-auto object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
                                             <div style={{display: 'none'}} className="w-full h-[50px] bg-[#0f172a] flex-col justify-center items-center text-white italic rounded-sm">
-                                                <span className="text-xl font-black leading-none text-orange-500">e<span className="text-blue-300">X</span></span>
-                                                <span className="text-[7px] mt-0.5 font-sans not-italic font-bold tracking-widest uppercase">Exceed Express</span>
+                                                <span className="text-xl font-black text-orange-500">e<span className="text-blue-300">X</span></span>
                                             </div>
                                         </div>
-                                        {/* SLOGAN BARU */}
                                         <span className="text-[10px] font-bold italic text-slate-700 mt-1.5 whitespace-nowrap">"Antar tuntas harga pas"</span>
                                     </div>
 
                                     <div className="flex flex-col gap-1">
-                                        <div className="border border-black px-4 py-1.5 font-bold text-sm min-w-[250px] uppercase bg-gray-50">{selectedOlshop}</div>
-                                        <div className="border border-black px-4 py-1.5 text-sm font-semibold min-w-[250px]">{selectedDate ? getIndoDate(selectedDate) : 'Semua Tanggal'}</div>
+                                        <div className="border border-black px-4 py-1.5 font-bold text-sm min-w-[250px] uppercase bg-gray-50 flex items-center">
+                                            <span className="text-[10px] text-gray-500 mr-2 border-r border-gray-400 pr-2">{rekapMode === 'olshop' ? 'OLSHOP' : 'KURIR'}</span>
+                                            {selectedValue}
+                                        </div>
+                                        <div className="border border-black px-4 py-1.5 text-sm font-semibold min-w-[250px]">
+                                            {selectedDate ? getIndoDate(selectedDate) : 'Semua Tanggal'}
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* Tengah: Keuangan */}
-                                <div>
-                                    <table className="box-summary">
+                                <div className="flex gap-4">
+                                    <table className="box-summary w-[260px]">
                                         <tbody>
                                             <tr>
-                                                <td className="bg-gray-100 w-[120px]">Setoran</td>
-                                                <td className="text-right w-[150px]">{formatCurr(summary.setoranKotor)}</td>
+                                                <td className="bg-gray-100 w-[140px]">{rekapMode === 'olshop' ? 'Setoran' : 'Setoran (Fisik Cash)'}</td>
+                                                <td className="text-right w-[120px]">{formatCurr(summary.setoran)}</td>
                                             </tr>
                                             <tr>
-                                                <td className="bg-gray-100">TF/VOLUME</td>
-                                                <td className="text-right text-red-600">{formatCurr(summary.potonganTF)}</td>
+                                                <td className="bg-gray-100">{rekapMode === 'olshop' ? 'TF/VOLUME' : 'Minus Hak (TF/Vol)'}</td>
+                                                <td className="text-right text-red-600">{formatCurr(summary.tfVolume)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="bg-gray-100">{rekapMode === 'olshop' ? 'Estimasi Setoran' : 'Total Wajib Setor'}</td>
+                                                <td className="text-right text-blue-600">{formatCurr(summary.estimasiSetoran)}</td>
                                             </tr>
                                             <tr>
                                                 <td className="bg-gray-100">SUDAH SETOR</td>
-                                                <td className="text-right">{formatCurr(summary.sudahSetor)}</td>
+                                                <td className="text-right text-emerald-600">{formatCurr(summary.sudahSetor)}</td>
                                             </tr>
                                         </tbody>
                                     </table>
-                                </div>
 
-                                {/* Kanan: Status */}
-                                <div>
-                                    <table className="box-summary">
+                                    <table className="box-summary w-[120px]">
                                         <tbody>
-                                            <tr>
-                                                <td className="w-[100px] bg-green-500 text-white text-center">SUKSES</td>
-                                                <td className="text-center w-[50px] font-black">{summary.sukses}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="bg-yellow-400 text-center text-yellow-900">PENDING</td>
-                                                <td className="text-center font-black">{summary.pending}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="bg-red-600 text-white text-center">CANCEL</td>
-                                                <td className="text-center font-black">{summary.cancel}</td>
-                                            </tr>
+                                            <tr><td className="bg-green-400 text-green-900 text-center uppercase tracking-wider">SUKSES</td><td className="text-center font-black text-lg w-[40px]">{summary.sukses}</td></tr>
+                                            <tr><td className="bg-yellow-400 text-yellow-900 text-center uppercase tracking-wider">PENDING</td><td className="text-center font-black text-lg">{summary.pending}</td></tr>
+                                            <tr><td className="bg-red-500 text-white text-center uppercase tracking-wider">CANCEL</td><td className="text-center font-black text-lg">{summary.cancel}</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
 
-                            {/* TABEL DATA PUSAT */}
                             <table className="excel-table">
                                 <thead>
                                     <tr>
@@ -385,16 +376,16 @@
                                         <th className="w-20">Total Tagihan</th>
                                         <th className="w-20">Status</th>
                                         <th className="w-20">Metode Bayar</th>
-                                        <th>Kurir ID</th>
+                                        <th className="w-28">{rekapMode === 'olshop' ? 'Kurir ID' : 'Nama Olshop'}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredData.length === 0 ? (
-                                        <tr><td colSpan="11" className="text-center py-4 text-gray-500 font-bold">Tidak ada data untuk tanggal ini.</td></tr>
+                                        <tr><td colSpan="11" className="text-center py-4 text-gray-500 font-bold">Tidak ada data untuk laporan ini.</td></tr>
                                     ) : (
                                         filteredData.map((pkg, idx) => {
                                             const stat = String(pkg.status).toUpperCase();
-                                            const isPending = stat === 'PENDING';
+                                            const isPending = stat === 'PENDING' || stat === 'SIAP_ANTAR' || stat === 'PROSES';
                                             const isCancel = stat === 'CANCEL';
                                             const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
 
@@ -409,10 +400,12 @@
                                                     <td className="text-right">{oTambahan === 0 ? '-' : formatCurr(oTambahan)}</td>
                                                     <td className="text-right font-bold">{tagihan === 0 ? '-' : formatCurr(tagihan)}</td>
                                                     <td className={`text-center font-bold ${isPending ? 'bg-yellow-400 text-yellow-900' : (isCancel ? 'bg-red-600 text-white' : 'text-green-700')}`}>
-                                                        {stat}
+                                                        {stat === 'SIAP_ANTAR' || stat === 'PROSES' ? 'PENDING' : stat}
                                                     </td>
                                                     <td className="text-center">{pkg.metodeBayar || '-'}</td>
-                                                    <td className="text-xs">{String(pkg.kurirId || '-').split('@')[0]}</td>
+                                                    <td className="text-[10px] uppercase font-bold text-center">
+                                                        {rekapMode === 'olshop' ? String(pkg.kurirId || '-').split('@')[0] : pkg.olshopName}
+                                                    </td>
                                                 </tr>
                                             );
                                         })
@@ -420,16 +413,12 @@
                                 </tbody>
                             </table>
 
-                            {/* FOOTER ALAMAT KANTOR (MUNCUL DI BAWAH TABEL) */}
                             <div className="mt-8 text-center text-[11px] font-bold text-slate-600 border-t-2 border-slate-800 pt-3 flex flex-col items-center justify-center">
-                                <p>Exceed Express Logistics</p>
-                                <p className="font-medium mt-0.5">Alamat Kantor : Jalan Garuda, BTN Bawah Jayapura, Papua.  No. HP 08215006669</p>
+                                <p className="text-sm text-slate-800">Exceed Express Logistics</p>
+                                <p className="font-medium mt-0.5 text-slate-500">Alamat Kantor : Jalan Garuda, BTN Bawah Jayapura, Papua.  No. HP 08215006669</p>
                             </div>
 
                         </div>
-                        // =========================================================================
-                        // AKHIR AREA CETAK
-                        // =========================================================================
                     )}
                 </div>
             );
