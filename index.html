@@ -147,6 +147,10 @@
             const [rekapMode, setRekapMode] = useState('olshop');
             const [selectedValue, setSelectedValue] = useState('');
             
+            // STATE BARU UNTUK FITUR PENCARIAN NAMA OLSHOP/KURIR
+            const [searchNameText, setSearchNameText] = useState('');
+            const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
             // FITUR BARU: Pencarian dan Rentang Tanggal
             const [searchQuery, setSearchQuery] = useState('');
             const [startDate, setStartDate] = useState('');
@@ -401,21 +405,59 @@
                             
                             {/* Toggle Mode */}
                             <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-600 w-full lg:w-auto">
-                                <button onClick={() => { setRekapMode('olshop'); setSelectedValue(''); }} className={`flex-1 px-4 py-2 text-xs font-bold rounded transition-colors ${rekapMode === 'olshop' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
+                                <button onClick={() => { setRekapMode('olshop'); setSelectedValue(''); setSearchNameText(''); setIsDropdownOpen(false); }} className={`flex-1 px-4 py-2 text-xs font-bold rounded transition-colors ${rekapMode === 'olshop' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
                                     <i className="fas fa-store mr-1.5"></i> Rekap Olshop
                                 </button>
-                                <button onClick={() => { setRekapMode('kurir'); setSelectedValue(''); }} className={`flex-1 px-4 py-2 text-xs font-bold rounded transition-colors ${rekapMode === 'kurir' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
+                                <button onClick={() => { setRekapMode('kurir'); setSelectedValue(''); setSearchNameText(''); setIsDropdownOpen(false); }} className={`flex-1 px-4 py-2 text-xs font-bold rounded transition-colors ${rekapMode === 'kurir' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
                                     <i className="fas fa-motorcycle mr-1.5"></i> Rekap Kurir
                                 </button>
                             </div>
 
-                            {/* Pilihan Nama */}
-                            <select value={selectedValue} onChange={(e) => setSelectedValue(e.target.value)} className="bg-slate-700 border border-slate-600 rounded p-2 text-sm outline-none w-full lg:w-48 font-bold text-orange-300 flex-1">
-                                <option value="">- Pilih {rekapMode === 'olshop' ? 'Olshop' : 'Kurir'} -</option>
-                                {(rekapMode === 'olshop' ? olshopList : kurirList).map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
-                            </select>
+                            {/* Pilihan Nama (Ubah Jadi Searchable Dropdown) */}
+                            <div className="relative w-full lg:w-56 flex-1 z-50">
+                                <input 
+                                    type="text" 
+                                    placeholder={`Ketik / Pilih ${rekapMode === 'olshop' ? 'Olshop' : 'Kurir'}...`}
+                                    value={searchNameText}
+                                    onChange={(e) => {
+                                        setSearchNameText(e.target.value);
+                                        setIsDropdownOpen(true);
+                                        setSelectedValue(''); // Reset hasil di bawah jika mulai ngetik nama baru
+                                    }}
+                                    onFocus={() => setIsDropdownOpen(true)}
+                                    className="w-full pl-3 pr-8 py-2 bg-slate-700 border border-slate-600 rounded text-sm outline-none focus:border-orange-500 text-orange-300 font-bold placeholder-slate-400"
+                                />
+                                <i className={`fas fa-chevron-down absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 transition-transform pointer-events-none ${isDropdownOpen ? 'rotate-180' : ''}`}></i>
+                                
+                                {isDropdownOpen && (
+                                    <React.Fragment>
+                                        <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>
+                                        <ul className="absolute z-50 w-full mt-1 bg-slate-700 border border-slate-600 rounded-md shadow-xl max-h-60 overflow-y-auto">
+                                            {(rekapMode === 'olshop' ? olshopList : kurirList)
+                                                .filter(opt => opt.toLowerCase().includes(searchNameText.toLowerCase()))
+                                                .map((opt, i) => (
+                                                    <li 
+                                                        key={i} 
+                                                        onClick={() => {
+                                                            setSelectedValue(opt);
+                                                            setSearchNameText(opt);
+                                                            setIsDropdownOpen(false);
+                                                        }}
+                                                        className="px-3 py-2 text-sm text-slate-200 hover:bg-orange-500 hover:text-white cursor-pointer border-b border-slate-600 last:border-0"
+                                                    >
+                                                        {opt}
+                                                    </li>
+                                                ))
+                                            }
+                                            {(rekapMode === 'olshop' ? olshopList : kurirList).filter(opt => opt.toLowerCase().includes(searchNameText.toLowerCase())).length === 0 && (
+                                                <li className="px-3 py-2 text-sm text-slate-400 italic text-center">Nama tidak ditemukan</li>
+                                            )}
+                                        </ul>
+                                    </React.Fragment>
+                                )}
+                            </div>
 
-                            {/* Kotak Pencarian */}
+                            {/* Kotak Pencarian Data Resi */}
                             <div className="relative w-full lg:w-48 flex-1">
                                 <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
                                 <input type="text" placeholder="Cari Resi / Nama..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm outline-none focus:border-orange-500 text-white" />
