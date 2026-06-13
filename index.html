@@ -113,6 +113,7 @@
         // PASTE URL GOOGLE SCRIPT ANDA DI BAWAH INI
         // =================================================================================
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzVHojspm17WSZU42RaMtgiNWJikRfGyTlPh1FczlDJS9JL52PxX0d9RpkNJYM4g424/exec"; 
+        const APPSHEET_APP_ID = "APLIKASEXCEED-327461285";
 
         const formatCurr = (amount) => {
             if (!amount && amount !== 0) return '-';
@@ -129,6 +130,14 @@
             return { hBarang, tagihan, oDasar: Math.max(0, oDasar), oTambahan, oTotal: Math.max(0, oDasar) + oTambahan };
         };
 
+        // Fungsi Penarik Foto dari Server AppSheet
+        const getFotoUrl = (pkg) => {
+            const fileKey = pkg.fotoBukti || pkg.foto_bukti || pkg.foto || pkg.bukti || pkg.gambar;
+            if (!fileKey || String(fileKey).trim() === '') return null;
+            if (String(fileKey).startsWith('http://') || String(fileKey).startsWith('https://')) return fileKey;
+            return `https://www.appsheet.com/template/gettablefileurl?appName=${APPSHEET_APP_ID}&tableName=InputPaket&fileName=${encodeURIComponent(fileKey)}`;
+        };
+
         function App() {
             const [packages, setPackages] = useState([]);
             const [olshopList, setOlshopList] = useState([]);
@@ -142,6 +151,8 @@
             const [searchQuery, setSearchQuery] = useState('');
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
+            
+            const [selectedImage, setSelectedImage] = useState(null);
 
             const printAreaRef = useRef(null);
 
@@ -513,8 +524,19 @@
                                             const isCancel = stat === 'CANCEL';
                                             const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
 
+                                            const baseRowClass = isPending ? "bg-yellow-100 hover:bg-yellow-200" : (isCancel ? "bg-red-100 hover:bg-red-200" : "hover:bg-slate-50");
+
                                             return (
-                                                <tr key={idx} className={isPending ? "bg-yellow-100" : (isCancel ? "bg-red-100" : "")}>
+                                                <tr 
+                                                    key={idx} 
+                                                    className={`cursor-pointer transition-colors ${baseRowClass}`}
+                                                    onClick={() => {
+                                                        const foto = getFotoUrl(pkg);
+                                                        if (foto) setSelectedImage(foto);
+                                                        else alert('Foto bukti tidak tersedia untuk paket ini. Kurir mungkin belum mengunggahnya.');
+                                                    }}
+                                                    title="Klik baris ini untuk melihat foto bukti"
+                                                >
                                                     <td data-label="NO" className="text-center font-bold">{idx + 1}</td>
                                                     <td data-label="Nama Customer" className="font-semibold">{pkg.customerName}</td>
                                                     <td data-label="No HP Customer" className="text-center">{pkg.customerPhone || '-'}</td>
@@ -542,6 +564,21 @@
                                 <p className="font-medium mt-0.5 text-slate-500">Alamat Kantor : Jalan Garuda, BTN Bawah Jayapura, Papua.  No. HP 08215006669</p>
                             </div>
 
+                        </div>
+                    )}
+
+                    {/* MODAL FOTO BUKTI (Tidak akan ikut tercetak/terdownload) */}
+                    {selectedImage && (
+                        <div 
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 no-print" 
+                            data-html2canvas-ignore="true"
+                            onClick={() => setSelectedImage(null)}
+                        >
+                            <div className="relative w-full max-w-md flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+                                <button onClick={() => setSelectedImage(null)} className="absolute -top-12 right-0 text-white bg-red-500/80 hover:bg-red-500 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-colors"><i className="fas fa-times text-xl"></i></button>
+                                <img src={selectedImage} alt="Foto Bukti Paket" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl border-4 border-white/10 bg-black/50" />
+                                <p className="text-white font-black mt-4 tracking-widest text-sm uppercase flex items-center bg-black/50 px-4 py-2 rounded-full border border-white/10"><i className="fas fa-camera mr-2 text-blue-400"></i> FOTO BUKTI</p>
+                            </div>
                         </div>
                     )}
                 </div>
