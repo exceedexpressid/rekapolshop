@@ -13,8 +13,9 @@
     <!-- Pustaka React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- Pustaka Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- PUSTAKA BABEL DIKUNCI KE VERSI STABIL (7.22.20) UNTUK MENCEGAH ERROR IMPORT -->
+    <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
 
     <!-- PUSTAKA UNTUK EXPORT JPG & PDF -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -106,7 +107,11 @@
 
     <div id="root"></div>
 
-    <script type="text/babel">
+    <!-- Menambahkan data-presets="env,react" dan pragma agar terhindar dari bug babel -->
+    <script type="text/babel" data-presets="env,react">
+        /** @jsx React.createElement */
+        /** @jsxFrag React.Fragment */
+
         const { useState, useEffect, useMemo, useRef } = React;
 
         // =================================================================================
