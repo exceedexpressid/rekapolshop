@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Master Admin - Exceed Express</title>
+    <title>Dashboard Kurir - Exceed Express</title>
     
     <!-- PWA Setup -->
     <link rel="manifest" href="manifest.json">
@@ -181,6 +181,14 @@
             return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 }).format(amount);
         };
 
+        const StatusBadgeAdmin = ({ status }) => {
+            const s = String(status || '').toLowerCase();
+            if(s === 'sukses') return <span className="text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-emerald-800/50"><i className="fas fa-check-circle mr-1"></i>Sukses</span>;
+            if(s === 'cancel' || s === 'batal') return <span className="text-red-400 bg-red-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-red-800/50"><i className="fas fa-times-circle mr-1"></i>Cancel</span>;
+            if(s === 'pending') return <span className="text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-orange-800/50"><i className="fas fa-clock mr-1"></i>Pending</span>;
+            return <span className="text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-blue-800/50"><i className="fas fa-truck mr-1"></i>Proses</span>;
+        };
+
         function DashboardApp() {
             const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzVHojspm17WSZU42RaMtgiNWJikRfGyTlPh1FczlDJS9JL52PxX0d9RpkNJYM4g424/exec"; 
             const APPSHEET_APP_ID = "APLIKASEXCEED-327461285";
@@ -288,7 +296,6 @@
                 }
             };
 
-            // AUTO SYNC PADA SAAT PERTAMA KALI LOAD KARENA LOGIN DIHILANGKAN
             useEffect(() => {
                 syncData();
             }, []);
@@ -351,7 +358,7 @@
                 const summary = { 
                     totalPencairanOlshop: 0, totalDanaBelumCair: 0, totalDanaCair: 0, 
                     totalSetoranKurir: 0, totalPaketSukses: 0, totalOngkirTambahanKurir: 0, 
-                    totalProfitPerusahaan: 0, // Ini menjadi total Ongkir Dasar Keseluruhan
+                    totalProfitPerusahaan: 0, 
                     totalPkt, totalSks, totalPrs, totalPnd, totalCnc
                 };
 
@@ -574,15 +581,7 @@
 
             const isAndroid = layoutMode === 'android';
 
-            const StatusBadgeAdmin = ({ status }) => {
-                const s = String(status || '').toLowerCase();
-                if(s === 'sukses') return <span className="text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-emerald-800/50"><i className="fas fa-check-circle mr-1"></i>Sukses</span>;
-                if(s === 'cancel' || s === 'batal') return <span className="text-red-400 bg-red-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-red-800/50"><i className="fas fa-times-circle mr-1"></i>Cancel</span>;
-                if(s === 'pending') return <span className="text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-orange-800/50"><i className="fas fa-clock mr-1"></i>Pending</span>;
-                return <span className="text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase border border-blue-800/50"><i className="fas fa-truck mr-1"></i>Proses</span>;
-            };
-
-            const DashboardHeader = () => (
+            const renderDashboardHeader = () => (
                 <header className="bg-app-header px-4 py-3 shadow-md z-20 sticky top-0 flex justify-between items-center border-b border-app-border shrink-0">
                     <div className="flex items-center">
                         <div className="w-8 h-8 md:w-10 md:h-10 bg-emerald-600 rounded-lg flex items-center justify-center mr-3 text-white shadow-sm">
@@ -590,7 +589,7 @@
                         </div>
                         <div>
                             <p className="text-[9px] md:text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-0.5">EXCEED EXPRESS</p>
-                            <h1 className="text-sm md:text-lg lg:text-xl font-black text-white leading-none truncate">MASTER DASHBOARD</h1>
+                            <h1 className="text-sm md:text-lg lg:text-xl font-black text-white leading-none truncate">DASHBOARD KURIR</h1>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 md:gap-4">
@@ -606,7 +605,7 @@
                 </header>
             );
 
-            const FilterSection = () => (
+            const renderFilterSection = () => (
                 <div className={`bg-app-card border border-app-border rounded-xl p-3 md:p-4 flex ${isAndroid ? 'flex-col space-y-3' : 'flex-col lg:flex-row lg:space-y-0 lg:space-x-4 lg:items-center'}`}>
                     <div className={`relative w-full ${!isAndroid ? 'lg:flex-1' : ''}`}>
                         <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"></i>
@@ -642,7 +641,7 @@
                 </div>
             );
 
-            const StatusSummaryBar = () => (
+            const renderStatusSummaryBar = () => (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 md:gap-3 animate-fade-in">
                     <div className="col-span-2 lg:col-span-1 bg-app-card border border-app-border rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Total Paket</span>
@@ -667,7 +666,7 @@
                 </div>
             );
 
-            const MetricCards = () => (
+            const renderMetricCards = () => (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 animate-fade-in">
                     <div className="bg-[#2a4dcc] rounded-xl p-5 md:p-6 text-white shadow-lg relative overflow-hidden border border-[#3b5edd]">
                         <div className="absolute -right-4 -bottom-6 opacity-20"><i className="fas fa-motorcycle text-[100px]"></i></div>
@@ -688,7 +687,7 @@
                 </div>
             );
 
-            const WebSidebar = () => (
+            const renderWebSidebar = () => (
                 <div className="w-64 bg-app-card border-r border-app-border flex flex-col shrink-0 h-full overflow-y-auto">
                     <div className="p-4">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Menu Laporan</p>
@@ -713,7 +712,7 @@
                 </div>
             );
 
-            const MenuGrid = () => (
+            const renderMenuGrid = () => (
                 <div className="animate-fade-in mb-2">
                     <p className="text-[11px] font-bold text-slate-300 mb-3 px-1">Menu Laporan</p>
                     <div className="grid grid-cols-5 gap-2 md:gap-3">
@@ -924,8 +923,20 @@
                         {/* VIEW OLSHOP */}
                         {activeTab === 'olshop' && (
                             <div className="bg-app-card rounded-xl shadow-sm border border-app-border overflow-hidden">
-                                <div className="p-3 md:p-4 border-b border-app-border bg-app-header flex justify-between items-center">
-                                    <h3 className="font-bold text-slate-200 text-xs md:text-sm">Rekapitulasi Pencairan Olshop <span className="text-[10px] text-slate-400 font-normal ml-2">(Klik baris untuk rincian)</span></h3>
+                                <div className="p-3 md:p-4 border-b border-app-border bg-app-header flex flex-col md:flex-row justify-between items-start md:items-center gap-2 md:gap-3">
+                                    <h3 className="font-bold text-slate-200 text-xs md:text-sm w-full flex justify-between items-center">
+                                        <span>Rekapitulasi Pencairan Olshop <span className="text-[10px] text-slate-400 font-normal ml-2 hidden md:inline">(Klik baris untuk rincian)</span></span>
+                                    </h3>
+                                    {isAndroid && (
+                                        <div className="flex w-full justify-between items-center gap-3 mt-1">
+                                            <button onClick={() => { setExpandedOlshops([]); window.scrollTo({top: 0, behavior: 'smooth'}); }} className="flex-1 flex justify-center items-center py-2 bg-[#1e2533] text-slate-300 rounded-xl text-xs font-bold border border-[#2a3042] shadow-sm transition-all active:bg-[#0b1120]">
+                                                <i className="fas fa-arrow-left mr-2"></i> Kembali
+                                            </button>
+                                            <button onClick={() => syncData()} className="flex-1 flex justify-center items-center py-2 bg-[#1e7e59] text-white rounded-xl text-xs font-bold border border-emerald-700 shadow-sm transition-all active:bg-emerald-600">
+                                                <i className={`fas fa-sync-alt mr-2 ${isLoadingSync ? 'animate-spin' : ''}`}></i> Refresh
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="overflow-x-auto custom-scrollbar">
                                     <div className={`${!isAndroid ? 'min-w-[1000px]' : 'w-full'} flex flex-col`}>
@@ -1453,20 +1464,30 @@
                         {activeTab === 'cetak' && (
                             <div className="bg-[#f3f4f6] rounded-xl shadow-sm border border-app-border overflow-hidden text-black min-h-[600px] flex flex-col">
                                 <div className="no-print bg-slate-800 text-white p-4 shadow-md sticky top-0 z-50 flex flex-col gap-4">
-                                    <div className="flex justify-between items-center w-full">
+                                    <div className="flex flex-wrap md:flex-nowrap justify-between items-center w-full gap-3">
                                         <div className="flex items-center gap-3">
-                                            <div className="bg-orange-500 p-2 rounded-lg shrink-0"><i className="fas fa-file-invoice text-xl"></i></div>
+                                            {/* TOMBOL KEMBALI */}
+                                            <button onClick={() => { setActiveTab('olshop'); window.scrollTo({top: 0, behavior: 'smooth'}); }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 p-2 md:px-3 rounded-lg border border-slate-600 shadow-sm transition-all flex items-center justify-center h-10 shrink-0 group">
+                                                <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i> <span className="hidden md:inline ml-2 text-xs font-bold">Kembali</span>
+                                            </button>
+                                            
+                                            <div className="bg-orange-500 p-2 rounded-lg shrink-0 h-10 w-10 flex items-center justify-center"><i className="fas fa-file-invoice text-lg"></i></div>
                                             <div>
-                                                <h1 className="font-bold text-lg leading-tight">Mesin Cetak Rekap</h1>
-                                                <p className="text-xs text-slate-300">Exceed Express Ekspedisi</p>
+                                                <h1 className="font-bold text-base md:text-lg leading-tight">Dashboard Kurir</h1>
+                                                <p className="text-[10px] md:text-xs text-slate-300">Exceed Express Ekspedisi</p>
                                             </div>
                                         </div>
                                         
-                                        <div className="flex gap-2">
-                                            <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
-                                                <button onClick={() => executeExport('jpg')} disabled={!selectedValue || cetakFilteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center ${!selectedValue || cetakFilteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-blue-400'}`}><i className="fas fa-image mr-1.5 hidden md:inline"></i> JPG</button>
-                                                <button onClick={() => executeExport('pdf')} disabled={!selectedValue || cetakFilteredData.length === 0} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center border-l border-slate-700 ${!selectedValue || cetakFilteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-red-400'}`}><i className="fas fa-file-pdf mr-1.5 hidden md:inline"></i> PDF</button>
-                                                <button onClick={() => window.print()} disabled={!selectedValue || cetakFilteredData.length === 0} className={`px-4 py-1.5 text-xs font-bold rounded flex items-center border-l border-slate-700 ${!selectedValue || cetakFilteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}><i className="fas fa-print mr-1.5 hidden md:inline"></i> Print</button>
+                                        <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
+                                            {/* TOMBOL REFRESH */}
+                                            <button onClick={() => syncData()} className="bg-[#1e7e59] hover:bg-emerald-600 text-white px-3 rounded-lg text-xs font-bold shadow-sm transition-all flex items-center justify-center h-10 shrink-0 border border-emerald-700">
+                                                <i className={`fas fa-sync-alt mr-1.5 ${isLoadingSync ? 'animate-spin' : ''}`}></i> Refresh
+                                            </button>
+
+                                            <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700 h-10 items-center">
+                                                <button onClick={() => executeExport('jpg')} disabled={!selectedValue || cetakFilteredData.length === 0} className={`px-2 md:px-3 py-1.5 text-xs font-bold rounded flex items-center ${!selectedValue || cetakFilteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-blue-400'}`}><i className="fas fa-image md:mr-1.5"></i> <span className="hidden md:inline">JPG</span></button>
+                                                <button onClick={() => executeExport('pdf')} disabled={!selectedValue || cetakFilteredData.length === 0} className={`px-2 md:px-3 py-1.5 text-xs font-bold rounded flex items-center border-l border-slate-700 ${!selectedValue || cetakFilteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 text-red-400'}`}><i className="fas fa-file-pdf md:mr-1.5"></i> <span className="hidden md:inline">PDF</span></button>
+                                                <button onClick={() => window.print()} disabled={!selectedValue || cetakFilteredData.length === 0} className={`px-3 md:px-4 py-1.5 text-xs font-bold rounded flex items-center border-l border-slate-700 ${!selectedValue || cetakFilteredData.length === 0 ? 'opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}><i className="fas fa-print md:mr-1.5"></i> <span className="hidden md:inline">Print</span></button>
                                             </div>
                                         </div>
                                     </div>
@@ -1673,12 +1694,12 @@
 
             return (
                 <div className="h-screen bg-app-dark font-sans w-full mx-auto relative flex flex-col overflow-hidden">
-                    <DashboardHeader />
+                    {renderDashboardHeader()}
 
                     <div className="flex flex-1 overflow-hidden">
                         {!isAndroid && (
                             <div className="hidden lg:flex">
-                                <WebSidebar />
+                                {renderWebSidebar()}
                             </div>
                         )}
 
@@ -1695,10 +1716,10 @@
                                     </div>
                                 )}
 
-                                {activeTab !== 'cetak' && <FilterSection />}
-                                {activeTab !== 'cetak' && <StatusSummaryBar />}
-                                {activeTab !== 'cetak' && <MetricCards />}
-                                {isAndroid && activeTab !== 'cetak' && <MenuGrid />}
+                                {activeTab !== 'cetak' && renderFilterSection()}
+                                {activeTab !== 'cetak' && renderStatusSummaryBar()}
+                                {activeTab !== 'cetak' && renderMetricCards()}
+                                {isAndroid && activeTab !== 'cetak' && renderMenuGrid()}
                                 {renderContent()}
                             </div>
                         </div>
