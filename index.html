@@ -925,15 +925,18 @@ window.__initLokasiMap = function() {
             // Mencoba berbagai kemungkinan nama kolom
             // ==========================================
             const extractLocation = (pkg) => {
-                if (!pkg) return { lat: null, lng: null, source: null };
+                if (!pkg) return { lat: null, lng: null, latSource: null, lngSource: null };
                 
                 // Daftar kemungkinan nama kolom latitude
                 const latFields = ['latitude', 'lat', 'LAT', 'Latitude', 'LATITUDE', 'latittude', 'koordinat_lat', 'titik_lat', 'maps_lat', 'gps_lat'];
                 // Daftar kemungkinan nama kolom longitude
                 const lngFields = ['longitude', 'lng', 'lon', 'LON', 'LNG', 'Longitude', 'LONGITUDE', 'longtitude', 'koordinat_lng', 'koordinat_lon', 'titik_lng', 'titik_lon', 'maps_lng', 'maps_lon', 'gps_lng', 'gps_lon'];
+                // Daftar kemungkinan nama kolom koordinat GABUNGAN
+                const gpsFields = ['koordinatGps', 'koordinat_gps', 'koordinat', 'gps', 'titikLokasi', 'titik_lokasi', 'lokasi', 'koordinatGPS', 'KoordinatGps'];
                 
                 let lat = null, lng = null, latSource = null, lngSource = null;
                 
+                // PRIORITAS 1: Cari kolom latitude & longitude TERSEPISAH
                 for (const field of latFields) {
                     if (pkg[field] !== undefined && pkg[field] !== null && pkg[field] !== '') {
                         const parsed = parseCoordinate(pkg[field]);
@@ -956,7 +959,35 @@ window.__initLokasiMap = function() {
                     }
                 }
                 
-                return { lat, lng, latSource, lngSource };
+                // Jika sudah dapat keduanya dari kolom terpisah, langsung return
+                if (lat !== null && lng !== null) {
+                    return { lat, lng, latSource, lngSource };
+                }
+                
+                // ⭐ PRIORITAS 2: Coba PARSE dari kolom koordinat GABUNGAN (contoh: "-2.612043, 140.677319")
+                for (const field of gpsFields) {
+                    if (pkg[field] !== undefined && pkg[field] !== null && pkg[field] !== '') {
+                        const rawVal = String(pkg[field]).trim().replace(/^['"]/, '');
+                        if (!rawVal || rawVal === '0' || rawVal === '-') continue;
+                        
+                        // Pisahkan dengan koma, spasi, atau titik koma
+                        const parts = rawVal.split(/[,;\s]+/).filter(p => p.trim() !== '');
+                        if (parts.length >= 2) {
+                            const latNum = parseFloat(parts[0]);
+                            const lngNum = parseFloat(parts[1]);
+                            if (!isNaN(latNum) && !isNaN(lngNum) && latNum !== 0 && lngNum !== 0) {
+                                return { 
+                                    lat: latNum, 
+                                    lng: lngNum, 
+                                    latSource: field + ' (parsed)', 
+                                    lngSource: field + ' (parsed)' 
+                                };
+                            }
+                        }
+                    }
+                }
+                
+                return { lat: null, lng: null, latSource: null, lngSource: null };
             };
 
             // ==========================================
@@ -1060,6 +1091,8 @@ window.__initLokasiMap = function() {
                             longitude: useLocation.lng,
                             latSource: useLocation.latSource,
                             lngSource: useLocation.lngSource,
+                            // ⭐ Field koordinat gabungan untuk debug & fallback
+                            koordinatGps: latestPkg.koordinatGps || latestPkg.koordinat_gps || latestPkg.gps || latestPkg.titikLokasi || latestPkg.titik_lokasi || '',
                             // Info debug
                             hasLocation: anyPackageHasLocation,
                             totalFound: found.length,
