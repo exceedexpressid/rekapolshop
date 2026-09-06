@@ -963,29 +963,31 @@ window.__initLokasiMap = function() {
             // FUNGSI UTAMA: CEK LOKASI CUSTOMER BERDASARKAN NO HP
             // ==========================================
             const handleLokasiSearch = () => {
-                const phone = lokasiSearchPhone.trim();
-                if (!phone) {
-                    setLokasiSearchStatus('idle');
-                    setLokasiSearchResult(null);
-                    // Reset peta
+                try {
+                    const phone = lokasiSearchPhone.trim();
+                    if (!phone) {
+                        setLokasiSearchStatus('idle');
+                        setLokasiSearchResult(null);
+                        setMapInitialized(false);
+                        setMapError(null);
+                        try {
+                            if (lokasiMapRef) { lokasiMapRef.remove(); }
+                        } catch(e) {}
+                        setLokasiMapRef(null);
+                        window.__lokasiData = null;
+                        return;
+                    }
+                    
+                    // Reset semua state
                     setMapInitialized(false);
                     setMapError(null);
-                    if (lokasiMapRef) {
-                        try { lokasiMapRef.remove(); } catch(e) {}
-                        setLokasiMapRef(null);
-                    }
-                    return;
-                }
-                
-                // Reset state peta sebelum pencarian baru
-                setMapInitialized(false);
-                setMapError(null);
-                if (lokasiMapRef) {
-                    try { lokasiMapRef.remove(); } catch(e) {}
+                    try {
+                        if (lokasiMapRef) { lokasiMapRef.remove(); }
+                    } catch(e) {}
                     setLokasiMapRef(null);
-                }
-                
-                setLokasiSearchStatus('searching');
+                    window.__lokasiData = null;
+                    
+                    setLokasiSearchStatus('searching');
                 
                 // Normalisasi nomor HP input
                 const normalizedInput = normalizePhone(phone);
@@ -1075,64 +1077,105 @@ window.__initLokasiMap = function() {
                         }
                     }
                 }, 600);
+                } catch (e) {
+                    console.error("Error di handleLokasiSearch:", e);
+                    setLokasiSearchStatus('empty');
+                    setLokasiSearchResult({
+                        name: 'Error',
+                        phone: '-',
+                        address: 'Terjadi kesalahan saat pencarian: ' + e.message,
+                        olshop: '-',
+                        kurir: '-',
+                        packageId: '-',
+                        status: '-',
+                        latitude: null,
+                        longitude: null,
+                        totalFound: 0,
+                        allPackages: []
+                    });
+                }
             };
 
             // ⭐ INISIALISASI PETA - VERSI SUPER AMAN via window global
             useEffect(() => {
-                setMapInitialized(false);
-                setMapError(null);
-                
-                if (lokasiSearchStatus !== 'found' || !lokasiSearchResult) return;
-                
-                var lat = lokasiSearchResult.latitude;
-                var lng = lokasiSearchResult.longitude;
-                
-                if (lat === null || lng === null) return;
-                
-                lat = Number(lat);
-                lng = Number(lng);
-                
-                if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
-                    setMapError("Koordinat tidak valid (nilai 0 atau bukan angka)");
-                    return;
-                }
-                
-                // Simpan data ke window global untuk diakses fungsi inisialisasi
-                window.__lokasiData = {
-                    lat: lat,
-                    lng: lng,
-                    name: lokasiSearchResult.name || '-',
-                    phone: lokasiSearchResult.phone || '-',
-                    address: String(lokasiSearchResult.address || lokasiSearchResult.fullAddress || '-').substring(0, 80),
-                    olshop: lokasiSearchResult.olshop || '-'
-                };
-                
-                // Panggil fungsi inisialisasi dengan delay
-                var timer = setTimeout(function() {
-                    window.__initLokasiMap && window.__initLokasiMap();
-                }, 300);
-                
-                return function() {
-                    clearTimeout(timer);
-                    if (lokasiMapRef) {
-                        try { lokasiMapRef.remove(); } catch(e) {}
-                        setLokasiMapRef(null);
+                try {
+                    setMapInitialized(false);
+                    setMapError(null);
+                    
+                    if (lokasiSearchStatus !== 'found' || !lokasiSearchResult) return;
+                    
+                    var lat = lokasiSearchResult.latitude;
+                    var lng = lokasiSearchResult.longitude;
+                    
+                    if (lat === null || lng === null || lat === undefined || lng === undefined) return;
+                    
+                    lat = Number(lat);
+                    lng = Number(lng);
+                    
+                    if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
+                        setMapError("Koordinat tidak valid");
+                        return;
                     }
-                    window.__lokasiData = null;
-                    window.__lokasiMapInstance = null;
-                };
-            }, [lokasiSearchStatus, lokasiSearchResult && lokasiSearchResult.latitude, lokasiSearchResult && lokasiSearchResult.longitude, activeTab]);
+                    
+                    // Simpan data ke window global
+                    try {
+                        window.__lokasiData = {
+                            lat: lat,
+                            lng: lng,
+                            name: lokasiSearchResult.name ? String(lokasiSearchResult.name) : '-',
+                            phone: lokasiSearchResult.phone ? String(lokasiSearchResult.phone) : '-',
+                            address: String(lokasiSearchResult.address || lokasiSearchResult.fullAddress || '-').substring(0, 80),
+                            olshop: lokasiSearchResult.olshop ? String(lokasiSearchResult.olshop) : '-'
+                        };
+                    } catch(e) {
+                        console.warn("Gagal set window.__lokasiData:", e);
+                        return;
+                    }
+                    
+                    // Panggil fungsi inisialisasi dengan delay
+                    var timer = setTimeout(function() {
+                        try {
+                            if (typeof window.__initLokasiMap === 'function') {
+                                window.__initLokasiMap();
+                            }
+                        } catch(e) {
+                            console.error("Gagal panggil __initLokasiMap:", e);
+                            setMapError("Gagal inisialisasi peta: " + e.message);
+                        }
+                    }, 300);
+                    
+                    return function() {
+                        try {
+                            clearTimeout(timer);
+                            if (lokasiMapRef) {
+                                try { lokasiMapRef.remove(); } catch(e) {}
+                                setLokasiMapRef(null);
+                            }
+                            window.__lokasiData = null;
+                        } catch(e) {}
+                    };
+                } catch (e) {
+                    console.error("Error di useEffect peta:", e);
+                    setMapError("Error sistem: " + e.message);
+                }
+            }, [lokasiSearchStatus, activeTab]);
             
             // Dengarkan event dari script global saat peta berhasil dimuat
             useEffect(() => {
-                function handleMapReady() {
-                    setMapInitialized(true);
-                    setMapError(null);
-                }
-                document.addEventListener('mapReady', handleMapReady);
-                return () => {
-                    document.removeEventListener('mapReady', handleMapReady);
-                };
+                try {
+                    function handleMapReady() {
+                        try {
+                            setMapInitialized(true);
+                            setMapError(null);
+                        } catch(e) {}
+                    }
+                    document.addEventListener('mapReady', handleMapReady);
+                    return function() {
+                        try {
+                            document.removeEventListener('mapReady', handleMapReady);
+                        } catch(e) {}
+                    };
+                } catch(e) {}
             }, []);
 
             // ⭐ FUNGSI RENDER LOKASI YANG TERISOLASI & AMAN
