@@ -164,92 +164,7 @@
 
     <div id="root"></div>
 
-    <!-- SCRIPT INISIALISASI PETA GLOBAL (AMAN dari Babel/React) -->
-<script>
-window.__initLokasiMap = function() {
-    try {
-        // Cek apakah Leaflet ada
-        if (typeof L === 'undefined') {
-            console.warn("Leaflet belum siap");
-            setTimeout(window.__initLokasiMap, 200);
-            return;
-        }
-        
-        // Cek apakah ada data
-        var data = window.__lokasiData;
-        if (!data) return;
-        
-        // Cek container
-        var container = document.getElementById('lokasi-map-container');
-        if (!container) return;
-        
-        // Bersihkan container
-        container.innerHTML = '';
-        
-        // Hapus instance lama jika ada
-        if (window.__lokasiMapInstance) {
-            try { window.__lokasiMapInstance.remove(); } catch(e) {}
-            window.__lokasiMapInstance = null;
-        }
-        
-        // Pastikan container punya tinggi
-        if (container.offsetHeight < 50) {
-            container.style.height = '400px';
-        }
-        
-        // Buat peta
-        var map = L.map('lokasi-map-container').setView([data.lat, data.lng], 15);
-        window.__lokasiMapInstance = map;
-        
-        // Tambahkan tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
-        }).addTo(map);
-        
-        // Custom marker
-        var markerIcon = L.divIcon({
-            className: '',
-            html: '<div style="background:#06b6d4;width:36px;height:36px;border-radius:50%;border:3px solid white;box-shadow:0 3px 12px rgba(6,182,212,0.6);display:flex;align-items:center;justify-content:center;"><i class="fas fa-user" style="color:white;font-size:16px;"></i></div>',
-            iconSize: [36, 36],
-            iconAnchor: [18, 18],
-            popupAnchor: [0, -18]
-        });
-        
-        var marker = L.marker([data.lat, data.lng], { icon: markerIcon }).addTo(map);
-        
-        // Popup
-        var popupHtml = '<div style="min-width:180px;font-family:Inter,sans-serif;">' +
-            '<div style="font-weight:800;color:#06b6d4;margin-bottom:6px;font-size:13px;border-bottom:1px solid #334155;padding-bottom:5px;">' +
-            '<i class="fas fa-user-circle" style="margin-right:5px;"></i>' + data.name + '</div>' +
-            '<div style="color:#94a3b8;font-size:11px;margin-bottom:3px;"><i class="fas fa-phone" style="margin-right:5px;"></i>' + data.phone + '</div>' +
-            '<div style="color:#cbd5e1;font-size:11px;line-height:1.4;"><i class="fas fa-map-marker-alt" style="margin-right:5px;"></i>' + data.address + '</div>' +
-            '<div style="color:#64748b;font-size:10px;border-top:1px solid #334155;padding-top:5px;margin-top:5px;"><i class="fas fa-store" style="margin-right:5px;"></i>' + data.olshop + '</div>' +
-            '</div>';
-        
-        marker.bindPopup(popupHtml).openPopup();
-        
-        // Invalidate size setelah render
-        setTimeout(function() {
-            map.invalidateSize();
-            marker.openPopup();
-        }, 250);
-        
-        // Update state React via event custom
-        var event = new CustomEvent('mapReady');
-        document.dispatchEvent(event);
-        
-    } catch (e) {
-        console.error("Gagal init peta:", e);
-        var container = document.getElementById('lokasi-map-container');
-        if (container) {
-            container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef4444;font-size:12px;padding:20px;text-align:center;flex-direction:column;"><i class="fas fa-exclamation-triangle text-2xl mb-2"></i><div>Gagal memuat peta: ' + e.message + '</div></div>';
-        }
-    }
-};
-</script>
-
-<script type="text/babel" data-presets="env,react">
+    <script type="text/babel" data-presets="env,react">
         /** @jsx React.createElement */
         /** @jsxFrag React.Fragment */
 
@@ -340,8 +255,6 @@ window.__initLokasiMap = function() {
             const [lokasiSearchResult, setLokasiSearchResult] = useState(null);
             const [lokasiSearchStatus, setLokasiSearchStatus] = useState('idle'); // idle, searching, found, notfound, empty
             const [lokasiMapRef, setLokasiMapRef] = useState(null);
-            const [mapInitialized, setMapInitialized] = useState(false);
-            const [mapError, setMapError] = useState(null);
             const [showDebugInfo, setShowDebugInfo] = useState(false);
             
             const [expandedOlshops, setExpandedOlshops] = useState([]); 
@@ -925,18 +838,15 @@ window.__initLokasiMap = function() {
             // Mencoba berbagai kemungkinan nama kolom
             // ==========================================
             const extractLocation = (pkg) => {
-                if (!pkg) return { lat: null, lng: null, latSource: null, lngSource: null };
+                if (!pkg) return { lat: null, lng: null, source: null };
                 
                 // Daftar kemungkinan nama kolom latitude
                 const latFields = ['latitude', 'lat', 'LAT', 'Latitude', 'LATITUDE', 'latittude', 'koordinat_lat', 'titik_lat', 'maps_lat', 'gps_lat'];
                 // Daftar kemungkinan nama kolom longitude
                 const lngFields = ['longitude', 'lng', 'lon', 'LON', 'LNG', 'Longitude', 'LONGITUDE', 'longtitude', 'koordinat_lng', 'koordinat_lon', 'titik_lng', 'titik_lon', 'maps_lng', 'maps_lon', 'gps_lng', 'gps_lon'];
-                // Daftar kemungkinan nama kolom koordinat GABUNGAN
-                const gpsFields = ['koordinatGps', 'koordinat_gps', 'koordinat', 'gps', 'titikLokasi', 'titik_lokasi', 'lokasi', 'koordinatGPS', 'KoordinatGps'];
                 
                 let lat = null, lng = null, latSource = null, lngSource = null;
                 
-                // PRIORITAS 1: Cari kolom latitude & longitude TERSEPISAH
                 for (const field of latFields) {
                     if (pkg[field] !== undefined && pkg[field] !== null && pkg[field] !== '') {
                         const parsed = parseCoordinate(pkg[field]);
@@ -959,66 +869,21 @@ window.__initLokasiMap = function() {
                     }
                 }
                 
-                // Jika sudah dapat keduanya dari kolom terpisah, langsung return
-                if (lat !== null && lng !== null) {
-                    return { lat, lng, latSource, lngSource };
-                }
-                
-                // ⭐ PRIORITAS 2: Coba PARSE dari kolom koordinat GABUNGAN (contoh: "-2.612043, 140.677319")
-                for (const field of gpsFields) {
-                    if (pkg[field] !== undefined && pkg[field] !== null && pkg[field] !== '') {
-                        const rawVal = String(pkg[field]).trim().replace(/^['"]/, '');
-                        if (!rawVal || rawVal === '0' || rawVal === '-') continue;
-                        
-                        // Pisahkan dengan koma, spasi, atau titik koma
-                        const parts = rawVal.split(/[,;\s]+/).filter(p => p.trim() !== '');
-                        if (parts.length >= 2) {
-                            const latNum = parseFloat(parts[0]);
-                            const lngNum = parseFloat(parts[1]);
-                            if (!isNaN(latNum) && !isNaN(lngNum) && latNum !== 0 && lngNum !== 0) {
-                                return { 
-                                    lat: latNum, 
-                                    lng: lngNum, 
-                                    latSource: field + ' (parsed)', 
-                                    lngSource: field + ' (parsed)' 
-                                };
-                            }
-                        }
-                    }
-                }
-                
-                return { lat: null, lng: null, latSource: null, lngSource: null };
+                return { lat, lng, latSource, lngSource };
             };
 
             // ==========================================
             // FUNGSI UTAMA: CEK LOKASI CUSTOMER BERDASARKAN NO HP
             // ==========================================
             const handleLokasiSearch = () => {
-                try {
-                    const phone = lokasiSearchPhone.trim();
-                    if (!phone) {
-                        setLokasiSearchStatus('idle');
-                        setLokasiSearchResult(null);
-                        setMapInitialized(false);
-                        setMapError(null);
-                        try {
-                            if (lokasiMapRef) { lokasiMapRef.remove(); }
-                        } catch(e) {}
-                        setLokasiMapRef(null);
-                        window.__lokasiData = null;
-                        return;
-                    }
-                    
-                    // Reset semua state
-                    setMapInitialized(false);
-                    setMapError(null);
-                    try {
-                        if (lokasiMapRef) { lokasiMapRef.remove(); }
-                    } catch(e) {}
-                    setLokasiMapRef(null);
-                    window.__lokasiData = null;
-                    
-                    setLokasiSearchStatus('searching');
+                const phone = lokasiSearchPhone.trim();
+                if (!phone) {
+                    setLokasiSearchStatus('idle');
+                    setLokasiSearchResult(null);
+                    return;
+                }
+                
+                setLokasiSearchStatus('searching');
                 
                 // Normalisasi nomor HP input
                 const normalizedInput = normalizePhone(phone);
@@ -1091,8 +956,6 @@ window.__initLokasiMap = function() {
                             longitude: useLocation.lng,
                             latSource: useLocation.latSource,
                             lngSource: useLocation.lngSource,
-                            // ⭐ Field koordinat gabungan untuk debug & fallback
-                            koordinatGps: latestPkg.koordinatGps || latestPkg.koordinat_gps || latestPkg.gps || latestPkg.titikLokasi || latestPkg.titik_lokasi || '',
                             // Info debug
                             hasLocation: anyPackageHasLocation,
                             totalFound: found.length,
@@ -1110,494 +973,1307 @@ window.__initLokasiMap = function() {
                         }
                     }
                 }, 600);
-                } catch (e) {
-                    console.error("Error di handleLokasiSearch:", e);
-                    setLokasiSearchStatus('empty');
-                    setLokasiSearchResult({
-                        name: 'Error',
-                        phone: '-',
-                        address: 'Terjadi kesalahan saat pencarian: ' + e.message,
-                        olshop: '-',
-                        kurir: '-',
-                        packageId: '-',
-                        status: '-',
-                        latitude: null,
-                        longitude: null,
-                        totalFound: 0,
-                        allPackages: []
-                    });
-                }
             };
 
-            // ⭐ INISIALISASI PETA - VERSI SUPER AMAN via window global
-            useEffect(() => {
-                try {
-                    setMapInitialized(false);
-                    setMapError(null);
+            // Handler untuk inisialisasi peta Leaflet - LEBIH ROBUST
+            const initLokasiMap = (mapContainerId) => {
+                if (!lokasiSearchResult || lokasiSearchResult.latitude === null || lokasiSearchResult.longitude === null) return;
+                
+                // Hapus map lama jika ada
+                if (lokasiMapRef) {
+                    try { lokasiMapRef.remove(); } catch(e) {}
+                }
+                
+                // Pastikan nilai koordinat adalah angka yang valid
+                const lat = Number(lokasiSearchResult.latitude);
+                const lng = Number(lokasiSearchResult.longitude);
+                
+                if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
+                    console.warn("Koordinat tidak valid:", { lat, lng });
+                    return;
+                }
+                
+                setTimeout(() => {
+                    const container = document.getElementById(mapContainerId);
+                    if (!container) return;
                     
-                    if (lokasiSearchStatus !== 'found' || !lokasiSearchResult) return;
-                    
-                    var lat = lokasiSearchResult.latitude;
-                    var lng = lokasiSearchResult.longitude;
-                    
-                    if (lat === null || lng === null || lat === undefined || lng === undefined) return;
-                    
-                    lat = Number(lat);
-                    lng = Number(lng);
-                    
-                    if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
-                        setMapError("Koordinat tidak valid");
-                        return;
+                    // Pastikan container punya ukuran sebelum inisialisasi
+                    if (container.offsetHeight === 0) {
+                        container.style.height = '400px';
                     }
                     
-                    // Simpan data ke window global
                     try {
-                        window.__lokasiData = {
-                            lat: lat,
-                            lng: lng,
-                            name: lokasiSearchResult.name ? String(lokasiSearchResult.name) : '-',
-                            phone: lokasiSearchResult.phone ? String(lokasiSearchResult.phone) : '-',
-                            address: String(lokasiSearchResult.address || lokasiSearchResult.fullAddress || '-').substring(0, 80),
-                            olshop: lokasiSearchResult.olshop ? String(lokasiSearchResult.olshop) : '-'
-                        };
-                    } catch(e) {
-                        console.warn("Gagal set window.__lokasiData:", e);
-                        return;
-                    }
-                    
-                    // Panggil fungsi inisialisasi dengan delay
-                    var timer = setTimeout(function() {
-                        try {
-                            if (typeof window.__initLokasiMap === 'function') {
-                                window.__initLokasiMap();
-                            }
-                        } catch(e) {
-                            console.error("Gagal panggil __initLokasiMap:", e);
-                            setMapError("Gagal inisialisasi peta: " + e.message);
-                        }
-                    }, 300);
-                    
-                    return function() {
-                        try {
-                            clearTimeout(timer);
-                            if (lokasiMapRef) {
-                                try { lokasiMapRef.remove(); } catch(e) {}
-                                setLokasiMapRef(null);
-                            }
-                            window.__lokasiData = null;
-                        } catch(e) {}
-                    };
-                } catch (e) {
-                    console.error("Error di useEffect peta:", e);
-                    setMapError("Error sistem: " + e.message);
-                }
-            }, [lokasiSearchStatus, activeTab]);
-            
-            // Dengarkan event dari script global saat peta berhasil dimuat
-            useEffect(() => {
-                try {
-                    function handleMapReady() {
-                        try {
-                            setMapInitialized(true);
-                            setMapError(null);
-                        } catch(e) {}
-                    }
-                    document.addEventListener('mapReady', handleMapReady);
-                    return function() {
-                        try {
-                            document.removeEventListener('mapReady', handleMapReady);
-                        } catch(e) {}
-                    };
-                } catch(e) {}
-            }, []);
-
-            // ⭐ FUNGSI RENDER LOKASI YANG TERISOLASI & AMAN
-            // ⭐ FUNGSI RENDER LOKASI - VERSI AMAN & SEDERHANA
-            const renderLokasiView = () => {
-                try {
-                    var R = lokasiSearchResult;
-                    var S = lokasiSearchStatus;
-                    var hasR = R && R !== null;
-                    
-                    // Ekstrak nilai aman
-                    var name = hasR ? (R.name || '-') : '-';
-                    var phone = hasR ? (R.phone || '-') : '-';
-                    var address = hasR ? (R.address || R.fullAddress || '-') : '-';
-                    var olshop = hasR ? (R.olshop || '-') : '-';
-                    var kurir = hasR ? (R.kurir || '-') : '-';
-                    var packageId = hasR ? (R.packageId || '-') : '-';
-                    var totalFound = hasR ? (R.totalFound || 0) : 0;
-                    var lat = hasR && R.latitude != null ? R.latitude : null;
-                    var lng = hasR && R.longitude != null ? R.longitude : null;
-                    var rawGps = hasR && R.koordinatGps ? String(R.koordinatGps) : '';
-                    var allPkgs = hasR && R.allPackages ? R.allPackages : [];
-                    var firstPkg = allPkgs.length > 0 ? allPkgs[0] : null;
-                    
-                    var latNum = lat != null ? Number(lat) : NaN;
-                    var lngNum = lng != null ? Number(lng) : NaN;
-                    var hasValidCoords = !isNaN(latNum) && !isNaN(lngNum) && latNum !== 0 && lngNum !== 0;
-                    
-                    var el = React.createElement;
-                    var mainDivs = [];
-                    
-                    // === HEADER ===
-                    mainDivs.push(el('div', {
-                        style: { background: 'linear-gradient(135deg,#0891b2,#2563eb)', borderRadius: '16px', padding: '24px 28px', color: 'white', boxShadow: '0 10px 40px rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', marginBottom: '16px', position: 'relative', overflow: 'hidden' }
-                    },
-                        el('div', { style: { position: 'absolute', right: '-10px', bottom: '-20px', opacity: 0.15 } },
-                            el('i', { className: 'fas fa-map-marked-alt', style: { fontSize: '120px' } })
-                        ),
-                        el('div', { style: { position: 'relative', zIndex: 1 } },
-                            el('h3', { style: { fontWeight: 900, fontSize: '20px', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' } },
-                                el('i', { className: 'fas fa-map-marker-alt', style: { color: '#67e8f9' } }),
-                                'Cek Lokasi Customer'
-                            ),
-                            el('p', { style: { color: '#a5f3fc', fontSize: '13px', margin: 0, lineHeight: 1.5 } },
-                                'Masukkan nomor HP customer untuk melihat informasi detail dan lokasi pada peta interaktif OpenStreetMap.'
-                            )
-                        )
-                    ));
-                    
-                    // === SEARCH BOX ===
-                    var searchInput = el('div', {
-                        style: { background: '#1e2533', borderRadius: '16px', padding: '20px', border: '1px solid #2a3042', marginBottom: '16px' }
-                    },
-                        el('label', { style: { display: 'block', color: '#cbd5e1', fontSize: '13px', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' } },
-                            el('i', { className: 'fas fa-search', style: { color: '#06b6d4' } }),
-                            'Cari Berdasarkan Nomor HP Customer'
-                        ),
-                        el('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                            el('div', { style: { position: 'relative', flex: 1, minWidth: '240px' } },
-                                el('i', { className: 'fas fa-mobile-alt', style: { position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '16px' } }),
-                                el('input', {
-                                    type: 'tel',
-                                    placeholder: 'Contoh: 081234567890',
-                                    value: lokasiSearchPhone,
-                                    onChange: function(e) { setLokasiSearchPhone(e.target.value); },
-                                    onKeyPress: function(e) { if (e.key === 'Enter') handleLokasiSearch(); },
-                                    style: { width: '100%', padding: '14px 16px 14px 48px', background: '#151928', border: '1px solid #2a3042', borderRadius: '12px', fontSize: '14px', outline: 'none', color: 'white', fontFamily: 'inherit', boxSizing: 'border-box' }
-                                })
-                            ),
-                            el('button', {
-                                onClick: handleLokasiSearch,
-                                disabled: S === 'searching' || !lokasiSearchPhone.trim(),
-                                style: {
-                                    padding: '14px 28px',
-                                    background: S === 'searching' || !lokasiSearchPhone.trim() ? '#475569' : '#06b6d4',
-                                    color: 'white', border: 'none', borderRadius: '12px',
-                                    fontWeight: 700, fontSize: '13px', cursor: S === 'searching' || !lokasiSearchPhone.trim() ? 'not-allowed' : 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'inherit'
-                                }
-                            }, S === 'searching' 
-                                ? [el('i', { className: 'fas fa-circle-notch fa-spin' }), ' Mencari...']
-                                : [el('i', { className: 'fas fa-location-arrow' }), ' Cek Lokasi']
-                            ),
-                            (lokasiSearchPhone || hasR) && el('button', {
-                                onClick: function() {
-                                    setLokasiSearchPhone('');
-                                    setLokasiSearchResult(null);
-                                    setLokasiSearchStatus('idle');
-                                    setMapInitialized(false);
-                                    setMapError(null);
-                                    if (lokasiMapRef) { try { lokasiMapRef.remove(); } catch(e) {} setLokasiMapRef(null); }
-                                    window.__lokasiData = null;
-                                },
-                                style: { padding: '14px 18px', background: '#151928', color: '#94a3b8', border: '1px solid #2a3042', borderRadius: '12px', cursor: 'pointer', fontFamily: 'inherit' }
-                            }, el('i', { className: 'fas fa-times' }))
-                        )
-                    );
-                    mainDivs.push(searchInput);
-                    
-                    // === KONDISI: IDLE ===
-                    if (S === 'idle' && !hasR) {
-                        mainDivs.push(el('div', {
-                            style: { background: '#1e2533', borderRadius: '16px', padding: '48px 28px', border: '1px solid #2a3042', textAlign: 'center' }
-                        },
-                            el('div', { style: { width: '80px', height: '80px', margin: '0 auto 16px', borderRadius: '50%', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-                                el('i', { className: 'fas fa-map', style: { color: '#06b6d4', fontSize: '32px' } })
-                            ),
-                            el('h4', { style: { color: '#e2e8f0', fontWeight: 700, fontSize: '16px', margin: '0 0 8px 0' } }, 'Siap Mencari Lokasi'),
-                            el('p', { style: { color: '#94a3b8', fontSize: '13px', maxWidth: '420px', margin: '0 auto', lineHeight: 1.5 } },
-                                'Masukkan nomor HP customer pada kolom di atas dan klik Cek Lokasi.'
-                            )
-                        ));
-                    }
-                    
-                    // === KONDISI: SEARCHING ===
-                    if (S === 'searching') {
-                        mainDivs.push(el('div', {
-                            style: { background: '#1e2533', borderRadius: '16px', padding: '48px', border: '1px solid #2a3042', textAlign: 'center' }
-                        },
-                            el('i', { className: 'fas fa-circle-notch fa-spin', style: { color: '#06b6d4', fontSize: '40px', marginBottom: '16px' } }),
-                            el('h4', { style: { color: '#e2e8f0', fontWeight: 700, fontSize: '16px', margin: '0 0 8px 0' } }, 'Mencari customer...'),
-                            el('p', { style: { color: '#94a3b8', fontSize: '13px' } }, 'Nomor: ', el('strong', { style: { color: '#06b6d4' } }, lokasiSearchPhone))
-                        ));
-                    }
-                    
-                    // === KONDISI: NOT FOUND ===
-                    if (S === 'notfound') {
-                        mainDivs.push(el('div', {
-                            style: { background: '#1e2533', borderRadius: '16px', padding: '48px', border: '1px solid #2a3042', textAlign: 'center' }
-                        },
-                            el('div', { style: { width: '80px', height: '80px', margin: '0 auto 16px', borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-                                el('i', { className: 'fas fa-user-slash', style: { color: '#ef4444', fontSize: '32px' } })
-                            ),
-                            el('h4', { style: { color: '#e2e8f0', fontWeight: 700, fontSize: '16px', margin: '0 0 8px 0' } }, 'Customer Tidak Ditemukan'),
-                            el('p', { style: { color: '#94a3b8', fontSize: '13px' } },
-                                'Tidak ada data dengan nomor ', el('strong', { style: { color: '#ef4444' } }, lokasiSearchPhone)
-                            )
-                        ));
-                    }
-                    
-                    // === KONDISI: HASIL DITEMUKAN ===
-                    if (hasR && (S === 'empty' || S === 'found')) {
-                        // Layout 2 kolom: Info + Peta
-                        var infoCard = el('div', {
-                            style: { flex: 1, minWidth: '300px', background: '#1e2533', borderRadius: '16px', border: '1px solid #2a3042', overflow: 'hidden' }
-                        },
-                            // Header
-                            el('div', {
-                                style: {
-                                    background: hasValidCoords ? 'linear-gradient(90deg,rgba(6,182,212,0.15),rgba(37,99,235,0.15))' : 'rgba(234,179,8,0.1)',
-                                    borderBottom: hasValidCoords ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(234,179,8,0.3)',
-                                    padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px'
-                                }
-                            },
-                                el('i', { className: hasValidCoords ? 'fas fa-user-check' : 'fas fa-exclamation-triangle', style: { color: hasValidCoords ? '#06b6d4' : '#eab308' } }),
-                                el('span', { style: { color: hasValidCoords ? '#67e8f9' : '#eab308', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' } },
-                                    hasValidCoords ? 'Lokasi Ditemukan' : 'Data Lokasi Belum Lengkap'
-                                )
-                            ),
-                            // Body
-                            el('div', { style: { padding: '20px' } },
-                                // Nama & HP
-                                el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #2a3042' } },
-                                    el('div', { style: { width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg,#06b6d4,#2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
-                                        el('i', { className: 'fas fa-user', style: { color: 'white', fontSize: '22px' } })
-                                    ),
-                                    el('div', { style: { minWidth: 0, flex: 1 } },
-                                        el('h4', { style: { color: 'white', fontWeight: 700, fontSize: '16px', margin: 0 } }, name),
-                                        el('p', { style: { color: '#06b6d4', fontSize: '12px', margin: '4px 0 0 0' } },
-                                            el('i', { className: 'fas fa-phone', style: { marginRight: '6px', fontSize: '10px' } }), phone
-                                        )
-                                    )
-                                ),
-                                // Alamat
-                                el('div', { style: { marginBottom: '12px', padding: '12px', background: 'rgba(15,23,42,0.5)', borderRadius: '10px', border: '1px solid rgba(42,48,66,0.5)' } },
-                                    el('p', { style: { fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 4px 0' } }, 'Alamat Lengkap'),
-                                    el('p', { style: { color: '#e2e8f0', fontSize: '12px', margin: 0, lineHeight: 1.5 } }, address)
-                                ),
-                                // Info grid
-                                el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' } },
-                                    el('div', { style: { padding: '10px', background: 'rgba(15,23,42,0.5)', borderRadius: '8px', border: '1px solid rgba(42,48,66,0.5)' } },
-                                        el('p', { style: { fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 3px 0' } }, 'Olshop'),
-                                        el('p', { style: { color: '#e2e8f0', fontSize: '11px', margin: 0 } }, olshop)
-                                    ),
-                                    el('div', { style: { padding: '10px', background: 'rgba(15,23,42,0.5)', borderRadius: '8px', border: '1px solid rgba(42,48,66,0.5)' } },
-                                        el('p', { style: { fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 3px 0' } }, 'Kurir'),
-                                        el('p', { style: { color: '#e2e8f0', fontSize: '11px', margin: 0 } }, kurir)
-                                    ),
-                                    el('div', { style: { padding: '10px', background: 'rgba(15,23,42,0.5)', borderRadius: '8px', border: '1px solid rgba(42,48,66,0.5)' } },
-                                        el('p', { style: { fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 3px 0' } }, 'Resi'),
-                                        el('p', { style: { color: '#f97316', fontSize: '11px', margin: 0, fontFamily: 'monospace', fontWeight: 700 } }, packageId)
-                                    ),
-                                    el('div', { style: { padding: '10px', background: 'rgba(15,23,42,0.5)', borderRadius: '8px', border: '1px solid rgba(42,48,66,0.5)' } },
-                                        el('p', { style: { fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 3px 0' } }, 'Total Paket'),
-                                        el('p', { style: { color: '#10b981', fontSize: '11px', margin: 0, fontWeight: 700 } }, totalFound + ' paket')
-                                    )
-                                ),
-                                // Info Koordinat
-                                el('div', {
-                                    style: {
-                                        padding: '12px', borderRadius: '10px',
-                                        background: hasValidCoords ? 'rgba(6,182,212,0.1)' : 'rgba(234,179,8,0.1)',
-                                        border: hasValidCoords ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(234,179,8,0.3)'
-                                    }
-                                },
-                                    el('p', { style: { fontSize: '10px', color: hasValidCoords ? '#06b6d4' : '#eab308', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 8px 0' } },
-                                        el('i', { className: 'fas fa-crosshairs', style: { marginRight: '6px' } }),
-                                        hasValidCoords ? 'Titik Koordinat' : 'Koordinat Belum Tersedia'
-                                    ),
-                                    hasValidCoords ? el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } },
-                                        el('div', null,
-                                            el('p', { style: { fontSize: '9px', color: 'rgba(103,232,249,0.6)', margin: '0 0 2px 0' } }, 'Latitude'),
-                                            el('p', { style: { color: '#a5f3fc', fontSize: '12px', fontFamily: 'monospace', fontWeight: 700, margin: 0 } }, String(lat))
-                                        ),
-                                        el('div', null,
-                                            el('p', { style: { fontSize: '9px', color: 'rgba(103,232,249,0.6)', margin: '0 0 2px 0' } }, 'Longitude'),
-                                            el('p', { style: { color: '#a5f3fc', fontSize: '12px', fontFamily: 'monospace', fontWeight: 700, margin: 0 } }, String(lng))
-                                        )
-                                    ) : el('div', null,
-                                        el('p', { style: { color: '#fde68a', fontSize: '11px', margin: '0 0 6px 0', lineHeight: 1.5 } },
-                                            'Data customer ditemukan, namun koordinat belum diisi atau format salah.'
-                                        ),
-                                        rawGps ? el('div', { style: { marginTop: '6px', padding: '6px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' } },
-                                            el('p', { style: { fontSize: '9px', color: 'rgba(253,230,138,0.6)', margin: '0 0 2px 0' } }, 'Nilai mentah kolom "koordinat gps":'),
-                                            el('code', { style: { color: '#fde68a', fontSize: '10px', wordBreak: 'break-all' } }, rawGps)
-                                        ) : null,
-                                        el('p', { style: { fontSize: '9px', color: 'rgba(253,230,138,0.5)', marginTop: '8px' } },
-                                            'Format benar: ', el('code', { style: { color: '#fde68a' } }, '-2.5489, 140.7158'), ' (LAT koma LNG)'
-                                        )
-                                    )
-                                ),
-                                // Tombol navigasi
-                                hasValidCoords ? el('a', {
-                                    href: 'https://www.google.com/maps/dir/?api=1&destination=' + latNum + ',' + lngNum,
-                                    target: '_blank',
-                                    rel: 'noopener noreferrer',
-                                    style: {
-                                        display: 'flex', marginTop: '16px', padding: '12px 16px',
-                                        background: 'linear-gradient(90deg,#06b6d4,#2563eb)', color: 'white',
-                                        borderRadius: '12px', fontWeight: 700, fontSize: '13px',
-                                        textDecoration: 'none', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                    }
-                                }, el('i', { className: 'fas fa-route' }), 'Buka Navigasi Google Maps') : null
-                            )
-                        );
+                        const map = L.map(mapContainerId).setView([lat, lng], 15);
                         
-                        // Kartu Peta
-                        var mapCard = el('div', {
-                            style: { flex: 1.5, minWidth: '300px', background: '#1e2533', borderRadius: '16px', border: '1px solid #2a3042', overflow: 'hidden', display: 'flex', flexDirection: 'column' }
-                        },
-                            el('div', { style: { background: '#151928', borderBottom: '1px solid #2a3042', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-                                el('h4', { style: { color: '#cbd5e1', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' } },
-                                    el('i', { className: 'fas fa-map', style: { color: '#06b6d4' } }),
-                                    'Peta Lokasi Customer'
-                                ),
-                                hasValidCoords ? el('span', { style: { fontSize: '10px', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' } },
-                                    el('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' } }), 'LIVE'
-                                ) : null
-                            ),
-                            // Container peta
-                            el('div', {
-                                id: 'lokasi-map-container',
-                                style: { height: '400px', width: '100%', background: '#0f172a', position: 'relative' }
-                            },
-                                !hasValidCoords ? el('div', { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' } },
-                                    el('div', { style: { width: '96px', height: '96px', borderRadius: '50%', background: '#1e293b', border: '2px dashed #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' } },
-                                        el('i', { className: 'fas fa-map-marked-alt', style: { color: '#475569', fontSize: '40px' } })
-                                    ),
-                                    el('h5', { style: { color: '#94a3b8', fontWeight: 700, fontSize: '14px', margin: '0 0 8px 0' } }, 'Peta Tidak Tersedia'),
-                                    el('p', { style: { color: '#64748b', fontSize: '12px', maxWidth: '280px', margin: 0 } },
-                                        'Data koordinat lokasi belum diisi. Tambahkan latitude dan longitude.'
-                                    )
-                                ) : (!mapInitialized && !mapError ? el('div', { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' } },
-                                    el('i', { className: 'fas fa-circle-notch fa-spin', style: { fontSize: '28px', marginBottom: '12px', color: '#06b6d4' } }),
-                                    el('p', { style: { fontSize: '13px', fontWeight: 500, margin: 0 } }, 'Memuat peta...')
-                                ) : null),
-                                mapError ? el('div', { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', textAlign: 'center' } },
-                                    el('i', { className: 'fas fa-exclamation-triangle', style: { color: '#ef4444', fontSize: '28px', marginBottom: '12px' } }),
-                                    el('p', { style: { color: '#ef4444', fontSize: '12px', margin: '0 0 8px 0' } }, mapError)
-                                ) : null
-                            ),
-                            el('div', { style: { background: '#151928', borderTop: '1px solid #2a3042', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', color: '#64748b' } },
-                                el('span', null, el('i', { className: 'fas fa-layer-group', style: { marginRight: '6px' } }), 'Sumber: OpenStreetMap'),
-                                el('span', null, el('i', { className: 'fas fa-hand-pointer', style: { marginRight: '6px' } }), 'Geser & zoom peta')
-                            )
-                        );
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '&copy; OpenStreetMap contributors',
+                            maxZoom: 19
+                        }).addTo(map);
                         
-                        mainDivs.push(el('div', { style: { display: 'flex', gap: '16px', flexWrap: 'wrap' } }, infoCard, mapCard));
+                        // Custom marker icon
+                        const customIcon = L.divIcon({
+                            className: 'custom-marker',
+                            html: '<div style="background:#06b6d4;width:32px;height:32px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(6,182,212,0.5);display:flex;align-items:center;justify-content:center;animation:pulse 2s infinite;"><i class="fas fa-user" style="color:white;font-size:14px;"></i></div>',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        });
                         
-                        // === MODE DEBUG ===
-                        if (showDebugInfo && firstPkg) {
-                            var debugRows = [];
-                            var keys = Object.keys(firstPkg);
-                            for (var ki = 0; ki < keys.length; ki++) {
-                                var key = keys[ki];
-                                var isLoc = ['latitude','longitude','lat','lng','lon','koordinatGps','titikLokasi','lokasi','gps'].indexOf(key) >= 0;
-                                var val = firstPkg[key];
-                                var displayVal = val == null ? '(null)' : (String(val).trim() === '' ? '(kosong)' : String(val).substring(0, 100));
-                                debugRows.push(el('div', {
-                                    key: key,
-                                    style: {
-                                        display: 'flex', gap: '8px', padding: '4px 8px', fontSize: '10px',
-                                        borderRadius: '4px', background: isLoc ? 'rgba(6,182,212,0.1)' : 'rgba(30,37,51,0.5)',
-                                        border: isLoc ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(42,48,66,0.5)'
-                                    }
-                                },
-                                    el('span', { style: { color: isLoc ? '#22d3ee' : '#fb923c', fontFamily: 'monospace', fontWeight: 700, minWidth: '120px', flexShrink: 0 } },
-                                        key + (isLoc ? ' 📍' : '')
-                                    ),
-                                    el('span', { style: { color: '#cbd5e1', wordBreak: 'break-all' } }, displayVal)
-                                ));
-                            }
-                            
-                            mainDivs.push(el('div', {
-                                style: { background: '#1e2533', borderRadius: '16px', border: '1px solid #2a3042', overflow: 'hidden' }
-                            },
-                                el('div', { style: { background: '#151928', borderBottom: '1px solid #2a3042', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-                                    el('h4', { style: { color: '#cbd5e1', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', margin: 0 } },
-                                        el('i', { className: 'fas fa-bug', style: { marginRight: '8px', color: '#06b6d4' } }),
-                                        'Mode Debug - Semua Field Paket'
-                                    ),
-                                    el('button', {
-                                        onClick: function() { setShowDebugInfo(false); },
-                                        style: { fontSize: '10px', padding: '4px 10px', borderRadius: '6px', background: '#334155', color: '#94a3b8', border: '1px solid #475569', cursor: 'pointer', fontWeight: 700 }
-                                    }, 'Tutup')
-                                ),
-                                el('div', { style: { padding: '16px', background: '#0f172a', maxHeight: '300px', overflowY: 'auto' } }, debugRows)
-                            ));
-                        }
+                        const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
                         
-                        // Tombol debug toggle
-                        if (!showDebugInfo && firstPkg) {
-                            mainDivs.push(el('div', { style: { textAlign: 'center', marginTop: '8px' } },
-                                el('button', {
-                                    onClick: function() { setShowDebugInfo(true); },
-                                    style: { fontSize: '11px', padding: '6px 14px', borderRadius: '8px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', cursor: 'pointer', fontWeight: 700 }
-                                }, el('i', { className: 'fas fa-bug', style: { marginRight: '6px' } }), 'Cek Struktur Data (Debug)')
-                            ));
-                        }
+                        // Popup dengan info customer
+                        const addrShort = String(lokasiSearchResult.address || lokasiSearchResult.fullAddress || '-').substring(0, 80);
+                        const popupContent = `
+                            <div style="min-width:200px;">
+                                <div style="font-weight:800;color:#06b6d4;margin-bottom:8px;font-size:14px;border-bottom:1px solid #334155;padding-bottom:6px;">
+                                    <i class="fas fa-user-circle mr-2"></i>${lokasiSearchResult.name}
+                                </div>
+                                <div style="color:#94a3b8;font-size:11px;margin-bottom:5px;display:flex;align-items:center;gap:6px;">
+                                    <i class="fas fa-phone"></i>${lokasiSearchResult.phone}
+                                </div>
+                                <div style="color:#cbd5e1;font-size:11px;margin-bottom:5px;display:flex;align-items:flex-start;gap:6px;line-height:1.4;">
+                                    <i class="fas fa-map-marker-alt" style="margin-top:2px;"></i>
+                                    <span>${addrShort}</span>
+                                </div>
+                                <div style="color:#64748b;font-size:10px;border-top:1px solid #334155;padding-top:6px;margin-top:6px;display:flex;align-items:center;gap:6px;">
+                                    <i class="fas fa-store"></i>${lokasiSearchResult.olshop}
+                                </div>
+                            </div>
+                        `;
+                        
+                        marker.bindPopup(popupContent).openPopup();
+                        
+                        // Paksa resize map untuk memastikan render sempurna
+                        setTimeout(() => map.invalidateSize(), 300);
+                        
+                        setLokasiMapRef(map);
+                    } catch (mapError) {
+                        console.error("Gagal inisialisasi peta:", mapError);
+                        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef4444;font-size:12px;padding:20px;text-align:center;"><div><i class="fas fa-exclamation-triangle text-2xl mb-2" style="display:block;"></i>Gagal memuat peta. Coba refresh halaman.</div></div>';
                     }
-                    
-                    return el('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } }, mainDivs);
-                    
-                } catch (e) {
-                    console.error("ERROR renderLokasiView:", e);
-                    return React.createElement('div', {
-                        style: { background: '#1e2533', borderRadius: '16px', border: '1px solid rgba(239,68,68,0.3)', padding: '32px', textAlign: 'center' }
-                    },
-                        React.createElement('div', { style: { width: '64px', height: '64px', margin: '0 auto 16px', borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-                            React.createElement('i', { className: 'fas fa-exclamation-triangle', style: { color: '#ef4444', fontSize: '28px' } })
-                        ),
-                        React.createElement('h4', { style: { color: 'white', fontWeight: 700, fontSize: '16px', margin: '0 0 8px 0' } }, 'Kendala Saat Menampilkan Lokasi'),
-                        React.createElement('p', { style: { color: '#94a3b8', fontSize: '13px', margin: '0 0 12px 0' } }, e.message),
-                        React.createElement('button', {
-                            onClick: function() { window.location.reload(); },
-                            style: { padding: '8px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }
-                        }, React.createElement('i', { className: 'fas fa-sync', style: { marginRight: '6px' } }), 'Refresh Halaman')
-                    );
-                }
+                }, 150);
             };
 
-
+            // Cleanup map saat tab berubah
+            useEffect(() => {
+                return () => {
+                    if (lokasiMapRef) {
+                        lokasiMapRef.remove();
+                        setLokasiMapRef(null);
+                    }
+                };
+            }, [activeTab]);
 
             const renderContent = () => {
                 return (
                     <div className="animate-fade-in pb-10">
-                        {/* VIEW CEK LOKASI CUSTOMER - DENGAN PENANGANAN ERROR LOKAL */}
-                        {activeTab === 'lokasi' && (function() {
-                            try {
-                                return renderLokasiView();
-                            } catch (renderError) {
-                                console.error("Error render lokasi:", renderError);
+                        {/* VIEW KALKULATOR BAGI HASIL */}
+                        {activeTab === 'skema' && (() => {
+                            const simulasiPendapatanTotal = simSettings.paketPerHari * simSettings.rataOngkir * simSettings.hariKerja;
+                            const aktualPendapatanTotal = globalSummary.totalProfitPerusahaan; 
+
+                            const renderSchemaRow = (label, percent, bgClass, fungsiDetail = "") => {
+                                const simVal = (simulasiPendapatanTotal * percent) / 100;
+                                const aktVal = (aktualPendapatanTotal * percent) / 100;
                                 return (
-                                    <div className="bg-app-card rounded-xl border border-red-500/30 p-6 md:p-8 text-center">
-                                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-900/30 border border-red-500/30 flex items-center justify-center">
-                                            <i className="fas fa-exclamation-triangle text-red-400 text-2xl"></i>
-                                        </div>
-                                        <h4 className="text-white font-bold text-base mb-2">Ada Kendala Saat Menampilkan Lokasi</h4>
-                                        <p className="text-slate-400 text-sm mb-4 max-w-md mx-auto">{renderError.message}</p>
-                                        <button 
-                                            onClick={() => window.location.reload()}
-                                            className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-bold"
-                                        >
-                                            <i className="fas fa-sync mr-2"></i>Refresh Halaman
-                                        </button>
-                                    </div>
+                                     <div className={`grid grid-cols-12 gap-2 p-3 border-b border-app-border items-center hover:bg-app-header transition-colors ${bgClass}`}>
+                                          <div className="col-span-5 md:col-span-4 flex flex-col">
+                                              <span className="font-bold text-slate-300 text-[10px] md:text-xs uppercase">{label}</span>
+                                              {fungsiDetail && <span className="text-[8px] md:text-[9px] text-slate-500 mt-0.5 leading-tight">{fungsiDetail}</span>}
+                                          </div>
+                                          <div className="col-span-1 text-center font-bold text-slate-400 text-[10px] md:text-xs">{percent}%</div>
+                                          <div className="col-span-3 text-right font-black text-slate-300 text-[10px] md:text-sm">{formatCurrency(simVal)}</div>
+                                          <div className="col-span-3 md:col-span-4 text-right font-black text-emerald-400 text-[10px] md:text-sm">{formatCurrency(aktVal)}</div>
+                                     </div>
                                 );
-                            }
+                            };
+
+                            return (
+                                <div className="flex flex-col gap-4">
+                                    <div className="bg-app-card rounded-xl p-4 border border-app-border shadow-sm">
+                                        <h3 className="font-bold text-slate-200 mb-3 flex items-center"><i className="fas fa-calculator text-blue-500 mr-2"></i> Parameter Simulasi Pendapatan</h3>
+                                        <div className="grid grid-cols-3 gap-3 md:gap-4">
+                                             <div className="flex flex-col">
+                                                 <label className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase mb-1">Simulasi Paket /Hari</label>
+                                                 <input type="number" value={simSettings.paketPerHari} onChange={(e)=>handleSimChange('paketPerHari', e.target.value)} className="bg-[#0b1120] border border-app-border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm text-white font-bold outline-none focus:border-blue-500" />
+                                             </div>
+                                             <div className="flex flex-col">
+                                                 <label className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase mb-1">Rata Rata Ongkir</label>
+                                                 <input type="number" value={simSettings.rataOngkir} onChange={(e)=>handleSimChange('rataOngkir', e.target.value)} className="bg-[#0b1120] border border-app-border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm text-white font-bold outline-none focus:border-blue-500" />
+                                             </div>
+                                             <div className="flex flex-col">
+                                                 <label className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase mb-1">Hari Kerja Aktif</label>
+                                                 <input type="number" value={simSettings.hariKerja} onChange={(e)=>handleSimChange('hariKerja', e.target.value)} className="bg-[#0b1120] border border-app-border rounded-lg px-2 md:px-3 py-2 text-xs md:text-sm text-white font-bold outline-none focus:border-blue-500" />
+                                             </div>
+                                        </div>
+                                        <div className="mt-4 p-3 md:p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl flex flex-col md:flex-row md:justify-between items-start md:items-center gap-2">
+                                             <div>
+                                                 <span className="text-blue-400 font-bold uppercase tracking-widest text-[10px] md:text-xs block mb-0.5">Total Pendapatan (Simulasi 1 Bulan)</span>
+                                                 <span className="text-slate-400 text-[9px]">Dari Ongkir Dasar (Di Luar Volum)</span>
+                                             </div>
+                                             <span className="text-xl md:text-2xl font-black text-white">{formatCurrency(simulasiPendapatanTotal)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-app-card rounded-xl border border-app-border overflow-hidden shadow-sm">
+                                        <div className="p-3 md:p-4 border-b border-app-border bg-app-header flex justify-between items-center">
+                                            <h3 className="font-bold text-slate-200 text-xs md:text-sm flex items-center">
+                                                <i className="fas fa-sitemap text-yellow-500 mr-2"></i> Skema Kalkulator Bagi Hasil
+                                            </h3>
+                                        </div>
+                                        <div className="grid grid-cols-12 gap-2 bg-[#0b1120] border-b border-app-border p-3 text-slate-400 font-bold text-[9px] md:text-[10px] uppercase tracking-widest">
+                                            <div className="col-span-5 md:col-span-4">Skema</div>
+                                            <div className="col-span-1 text-center">%</div>
+                                            <div className="col-span-3 text-right text-blue-400">Simulasi 1 Bln</div>
+                                            <div className="col-span-3 md:col-span-4 text-right text-emerald-400">Data Aktual (Sistem)</div>
+                                        </div>
+                                        
+                                        {renderSchemaRow('Hak Kurir (Diluar Volum)', skemaPct.kurir, 'bg-blue-900/10 border-l-4 border-l-blue-500', '75% Dari Ongkir Dasar')}
+                                        {renderSchemaRow('Kas Kurir', skemaPct.kas, 'bg-[#0b1120]', '5% Dari Ongkir Dasar')}
+                                        {renderSchemaRow('Operasional (Ops)', skemaPct.ops, 'bg-[#0b1120]', '10% Dari Ongkir Dasar')}
+                                        {renderSchemaRow('Kantor (PT)', skemaPct.kantor, 'bg-emerald-900/10 text-emerald-400', '2% Dari Ongkir Dasar')}
+                                        {renderSchemaRow('Owner', skemaPct.owner, 'bg-emerald-900/10 text-emerald-400 border-l-4 border-emerald-500', '8% Dari Ongkir Dasar')}
+                                        
+                                        <div className="grid grid-cols-12 gap-2 p-3 bg-app-header border-t-2 border-emerald-600/50 items-center">
+                                            <div className="col-span-5 md:col-span-4 font-black text-slate-200 text-[10px] md:text-sm uppercase">TOTAL</div>
+                                            <div className="col-span-1 text-center font-black text-white text-[10px] md:text-sm">100%</div>
+                                            <div className="col-span-3 text-right font-black text-white text-[10px] md:text-sm">{formatCurrency(simulasiPendapatanTotal)}</div>
+                                            <div className="col-span-3 md:col-span-4 text-right font-black text-emerald-400 text-[10px] md:text-sm">{formatCurrency(aktualPendapatanTotal)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
                         })()}
+
+                        {/* VIEW RINCIAN PENDAPATAN */}
+                        {activeTab === 'profit' && (
+                            <div className="bg-app-card rounded-xl shadow-sm border border-app-border overflow-hidden">
+                                <div className="p-3 md:p-4 border-b border-app-border bg-app-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                    <div>
+                                        <h3 className="font-bold text-slate-200 text-xs md:text-sm flex items-center">
+                                            <i className="fas fa-chart-line text-emerald-500 mr-2"></i> Rincian Pendapatan (Distribusi Ongkir Dasar)
+                                        </h3>
+                                        <p className="text-[10px] text-slate-400 mt-1">Alokasi otomatis 100% dari total Ongkir Dasar (Di luar Ongkir Tambahan/Volume).</p>
+                                    </div>
+                                    <div className="bg-[#0b1120] border border-app-border rounded-lg p-3 min-w-[140px] flex flex-col items-end shadow-inner">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Ongkir Dasar</span>
+                                        <span className="text-white font-black text-sm md:text-lg">{formatCurrency(globalSummary.totalProfitPerusahaan)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <div className={`${!isAndroid ? 'min-w-[1000px]' : 'w-full'} flex flex-col`}>
+                                        {kurirReport.length === 0 ? (
+                                            <div className="p-8 text-center text-slate-500">Tidak ada data di periode ini.</div>
+                                        ) : (
+                                            !isAndroid ? (
+                                                <div className="grid grid-cols-[200px_1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-app-header border-b border-app-border items-center">
+                                                    <div>NAMA KURIR</div>
+                                                    <div className="text-right text-slate-300">ONGKIR DSR TOTAL</div>
+                                                    <div className="text-right text-blue-400">KURIR (75%)</div>
+                                                    <div className="text-right text-yellow-400">KAS (5%)</div>
+                                                    <div className="text-right text-orange-400">OPS (10%)</div>
+                                                    <div className="text-right text-emerald-400">KANTOR (2%)</div>
+                                                    <div className="text-right text-emerald-400">OWNER (8%)</div>
+                                                </div>
+                                            ) : (
+                                                <div className="px-4 py-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-app-header border-b border-app-border">ALOKASI PENDAPATAN KURIR</div>
+                                            )
+                                        )}
+                                        
+                                        {[...kurirReport].sort((a,b) => b.totalDasarOngkir - a.totalDasarOngkir).map((kur, idx) => {
+                                            const total = kur.totalDasarOngkir;
+                                            const vKurir = (total * 75) / 100;
+                                            const vKas = (total * 5) / 100;
+                                            const vOps = (total * 10) / 100;
+                                            const vPt = (total * 2) / 100;
+                                            const vOwner = (total * 8) / 100;
+
+                                            if (isAndroid) {
+                                                return (
+                                                    <div key={idx} className="flex flex-col gap-2 p-4 border-b border-app-border">
+                                                        <div className="flex justify-between items-center"><span className="font-bold text-slate-200 uppercase text-xs"><i className="fas fa-motorcycle text-emerald-400 mr-2"></i>{kur.name}</span><span className="text-[10px] text-white font-bold">{formatCurrency(total)}</span></div>
+                                                        <div className="grid grid-cols-2 gap-2 text-[10px] mt-1">
+                                                            <div className="bg-[#0b1120] p-2 rounded flex justify-between border border-app-border"><span className="text-slate-400">Dsr Total:</span><span className="text-slate-300 font-bold">{formatCurrency(total)}</span></div>
+                                                            <div className="bg-[#0b1120] p-2 rounded flex justify-between border border-app-border"><span className="text-blue-400/80">Kurir(75%):</span><span className="text-blue-400 font-bold">{formatCurrency(vKurir)}</span></div>
+                                                            <div className="bg-[#0b1120] p-2 rounded flex justify-between border border-app-border"><span className="text-yellow-400/80">Kas(5%):</span><span className="text-yellow-400 font-bold">{formatCurrency(vKas)}</span></div>
+                                                            <div className="bg-[#0b1120] p-2 rounded flex justify-between border border-app-border"><span className="text-orange-400/80">Ops(10%):</span><span className="text-orange-400 font-bold">{formatCurrency(vOps)}</span></div>
+                                                            <div className="bg-[#0b1120] p-2 rounded flex justify-between border border-app-border"><span className="text-emerald-500/80">Kantor(2%):</span><span className="text-emerald-400 font-bold">{formatCurrency(vPt)}</span></div>
+                                                            <div className="bg-[#0b1120] p-2 rounded flex justify-between border border-app-border"><span className="text-emerald-500/80">Owner(8%):</span><span className="text-emerald-400 font-bold">{formatCurrency(vOwner)}</span></div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                            return (
+                                                <div key={idx} className="grid grid-cols-[200px_1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-4 border-b border-app-border hover:bg-app-header transition-colors items-center">
+                                                    <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-emerald-900/30 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0"><i className="fas fa-motorcycle"></i></div><span className="font-bold text-slate-200 uppercase truncate text-xs md:text-sm" title={kur.name}>{kur.name}</span></div>
+                                                    <div className="text-right font-bold text-white">{formatCurrency(total)}</div>
+                                                    <div className="text-right font-black text-blue-400">{formatCurrency(vKurir)}</div>
+                                                    <div className="text-right font-black text-yellow-400">{formatCurrency(vKas)}</div>
+                                                    <div className="text-right font-black text-orange-400">{formatCurrency(vOps)}</div>
+                                                    <div className="text-right font-black text-emerald-400">{formatCurrency(vPt)}</div>
+                                                    <div className="text-right font-black text-emerald-400">{formatCurrency(vOwner)}</div>
+                                                </div>
+                                            );
+                                        })}
+                                        {kurirReport.length > 0 && (
+                                            !isAndroid ? (
+                                                <div className="grid grid-cols-[200px_1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-4 border-t-2 border-emerald-600/50 bg-app-header rounded-b-xl items-center mt-1">
+                                                    <div className="font-black text-slate-200 uppercase text-xs md:text-sm">TOTAL KESELURUHAN</div>
+                                                    <div className="text-right font-black text-white">{formatCurrency(globalSummary.totalProfitPerusahaan)}</div>
+                                                    <div className="text-right font-black text-blue-400">{formatCurrency((globalSummary.totalProfitPerusahaan * 75) / 100)}</div>
+                                                    <div className="text-right font-black text-yellow-400">{formatCurrency((globalSummary.totalProfitPerusahaan * 5) / 100)}</div>
+                                                    <div className="text-right font-black text-orange-400">{formatCurrency((globalSummary.totalProfitPerusahaan * 10) / 100)}</div>
+                                                    <div className="text-right font-black text-emerald-400">{formatCurrency((globalSummary.totalProfitPerusahaan * 2) / 100)}</div>
+                                                    <div className="text-right font-black text-emerald-400">{formatCurrency((globalSummary.totalProfitPerusahaan * 8) / 100)}</div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col gap-2 p-4 border-t-2 border-emerald-600/50 bg-app-header rounded-b-xl mt-1">
+                                                    <div className="font-black text-slate-200 uppercase text-xs mb-1">TOTAL KESELURUHAN</div>
+                                                    <div className="flex justify-between text-[10px]"><span className="text-slate-400">Total Ongkir Dsr:</span><span className="text-white font-bold">{formatCurrency(globalSummary.totalProfitPerusahaan)}</span></div>
+                                                    <div className="flex justify-between text-[10px]"><span className="text-slate-400">Total Kurir (75%):</span><span className="text-blue-400 font-bold">{formatCurrency((globalSummary.totalProfitPerusahaan * 75) / 100)}</span></div>
+                                                    <div className="flex justify-between text-[10px]"><span className="text-slate-400">Total Kas (5%):</span><span className="text-yellow-400 font-bold">{formatCurrency((globalSummary.totalProfitPerusahaan * 5) / 100)}</span></div>
+                                                    <div className="flex justify-between text-[10px]"><span className="text-slate-400">Total Ops (10%):</span><span className="text-orange-400 font-bold">{formatCurrency((globalSummary.totalProfitPerusahaan * 10) / 100)}</span></div>
+                                                    <div className="flex justify-between text-[10px]"><span className="text-slate-400">Total Kantor (2%):</span><span className="text-emerald-400 font-bold">{formatCurrency((globalSummary.totalProfitPerusahaan * 2) / 100)}</span></div>
+                                                    <div className="flex justify-between text-[10px]"><span className="text-slate-400">Total Owner (8%):</span><span className="text-emerald-400 font-bold">{formatCurrency((globalSummary.totalProfitPerusahaan * 8) / 100)}</span></div>
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* VIEW OLSHOP */}
+                        {activeTab === 'olshop' && (
+                            <div className="bg-app-card rounded-xl shadow-sm border border-app-border overflow-hidden">
+                                <div className="p-3 md:p-4 border-b border-app-border bg-app-header flex flex-col md:flex-row justify-between items-start md:items-center gap-2 md:gap-3">
+                                    <h3 className="font-bold text-slate-200 text-xs md:text-sm w-full flex justify-between items-center">
+                                        <span>Rekapitulasi Pencairan Olshop <span className="text-[10px] text-slate-400 font-normal ml-2 hidden md:inline">(Klik baris untuk rincian)</span></span>
+                                    </h3>
+                                    {isAndroid && (
+                                        <div className="flex w-full justify-between items-center gap-3 mt-1">
+                                            <button onClick={() => { setExpandedOlshops([]); window.scrollTo({top: 0, behavior: 'smooth'}); }} className="flex-1 flex justify-center items-center py-2 bg-[#1e2533] text-slate-300 rounded-xl text-xs font-bold border border-[#2a3042] shadow-sm transition-all active:bg-[#0b1120]">
+                                                <i className="fas fa-arrow-left mr-2"></i> Kembali
+                                            </button>
+                                            <button onClick={() => syncData()} className="flex-1 flex justify-center items-center py-2 bg-[#1e7e59] text-white rounded-xl text-xs font-bold border border-emerald-700 shadow-sm transition-all active:bg-emerald-600">
+                                                <i className={`fas fa-sync-alt mr-2 ${isLoadingSync ? 'animate-spin' : ''}`}></i> Refresh
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <div className={`${!isAndroid ? 'min-w-[1000px]' : 'w-full'} flex flex-col`}>
+                                        {olshopReport.length === 0 ? (
+                                            <div className="p-8 text-center text-slate-500">Tidak ada transaksi di periode/status ini.</div>
+                                        ) : (
+                                            olshopReport.map((ol, idx) => {
+                                                const isExpanded = expandedOlshops.includes(ol.name);
+                                                const currentFilter = olshopFilters[ol.name] || 'semua';
+                                                const displayedPaket = ol.paketTerkait.filter(pkg => {
+                                                    if (currentFilter === 'semua') return true;
+                                                    let stat = String(pkg.status || '').toLowerCase().replace(' ', '_');
+                                                    if (currentFilter === 'proses') return stat === 'siap_antar' || stat === 'proses';
+                                                    return stat === currentFilter;
+                                                });
+                                                
+                                                return (
+                                                    <div key={idx} className="flex flex-col border-b border-app-border hover:bg-app-header transition-colors">
+                                                        <div className={`p-3 md:p-4 cursor-pointer flex ${isAndroid ? 'flex-col gap-3' : 'items-center justify-between'}`} onClick={() => toggleOlshop(ol.name)}>
+                                                            <div className={`flex items-center gap-2.5 shrink-0 ${!isAndroid ? 'w-[280px]' : 'w-full justify-between'}`}>
+                                                                <div className="flex items-center gap-2.5">
+                                                                    <div className={`w-5 h-5 rounded flex items-center justify-center transition-transform ${isExpanded ? 'bg-[#d9531e] text-white rotate-180' : 'bg-app-border text-slate-400'}`}>
+                                                                        <i className="fas fa-chevron-down text-[10px]"></i>
+                                                                    </div>
+                                                                    <i className="fas fa-store text-[#d9531e]"></i>
+                                                                    <span className="font-bold text-slate-200 uppercase truncate text-xs md:text-sm max-w-[150px] md:max-w-[200px]">{ol.name}</span>
+                                                                    <span className="text-[9px] bg-app-border text-slate-300 px-2 py-0.5 rounded shrink-0 font-bold">{ol.paketTerkait.length} Pkt</span>
+                                                                </div>
+                                                                {isAndroid && (
+                                                                    <div className="min-w-[70px] flex justify-end" onClick={(e) => e.stopPropagation()}>
+                                                                        {ol.paketBelumCairIds.length > 0 ? (
+                                                                            <button disabled className="bg-app-border text-slate-400 px-3 py-1 rounded border border-[#374151] text-[9px] font-bold shadow-sm transition-colors flex items-center">
+                                                                                Blm Cair ({ol.paketBelumCairIds.length})
+                                                                            </button>
+                                                                        ) : (
+                                                                            <button disabled className="bg-emerald-900/30 text-emerald-500/50 px-3 py-1 rounded text-[9px] font-bold border border-emerald-900/50">LUNAS</button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            <div className={`flex ${isAndroid ? 'grid grid-cols-2 gap-2 w-full mt-1' : 'flex-1 justify-end items-center gap-6'}`}>
+                                                                <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`}>
+                                                                    <span className="text-[8px] font-bold text-emerald-500/70 uppercase tracking-widest mb-0.5">BARANG</span>
+                                                                    <span className="text-xs md:text-sm font-black text-emerald-400">+{formatCurrency(ol.nilaiBarang)}</span>
+                                                                </div>
+                                                                <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`}>
+                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">ONGKIR DSR</span>
+                                                                    <span className="text-xs md:text-sm font-black text-slate-400">{formatCurrency(ol.totalDasar)}</span>
+                                                                </div>
+                                                                <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`}>
+                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">ONGKIR TMB</span>
+                                                                    <span className="text-xs md:text-sm font-black text-slate-400">{formatCurrency(ol.totalTambahan)}</span>
+                                                                </div>
+                                                                <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`}>
+                                                                    <span className="text-[8px] font-bold text-red-500/70 uppercase tracking-widest mb-0.5">POTONG TF</span>
+                                                                    <span className="text-xs md:text-sm font-black text-red-400">-{formatCurrency(ol.potongan)}</span>
+                                                                </div>
+                                                                <div className={`flex ${isAndroid ? 'col-span-2 justify-between items-center bg-app-header p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[90px] pl-2 border-l border-app-border'}`}>
+                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">TOTAL BERSIH</span>
+                                                                    <div className={`flex ${isAndroid ? 'items-center gap-2' : 'flex-col items-end'}`}>
+                                                                        <span className={`text-[13px] md:text-[15px] font-black ${ol.pencairan >= 0 ? 'text-[#d9531e]' : 'text-red-500'}`}>{formatCurrency(ol.pencairan)}</span>
+                                                                        {ol.nominalBelumCair !== ol.pencairan && ol.nominalBelumCair !== 0 && (
+                                                                            <span className="text-[8px] text-slate-500 bg-black/30 px-1 py-0.5 rounded mt-0.5">Blm Cair: {formatCurrency(ol.nominalBelumCair)}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {!isAndroid && (
+                                                                <div className="min-w-[95px] flex justify-end ml-2" onClick={(e) => e.stopPropagation()}>
+                                                                    {ol.paketBelumCairIds.length > 0 ? (
+                                                                        <button disabled className="bg-app-border text-slate-400 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm w-full border border-[#374151]">
+                                                                            Blm Cair ({ol.paketBelumCairIds.length})
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button disabled className="bg-emerald-900/30 text-emerald-500/50 px-3 py-1.5 rounded-lg text-[10px] font-bold w-full border border-emerald-900/50">LUNAS</button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {isExpanded && (
+                                                            <div className="p-3 md:p-4 bg-[#0b1120] border-t border-app-border">
+                                                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-3">
+                                                                    <h4 className="text-slate-400 font-bold text-[10px] uppercase tracking-widest flex items-center"><i className="fas fa-boxes mr-2"></i>Rincian Resi: {ol.name}</h4>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {[{id:'semua', label:'Semua'}, {id:'sukses', label:'Sukses'}, {id:'proses', label:'Proses'}, {id:'pending', label:'Pending'}, {id:'cancel', label:'Cancel'}].map(f => (
+                                                                            <button key={f.id} onClick={(e) => { e.stopPropagation(); setOlshopFilters(prev => ({...prev, [ol.name]: f.id})); }}
+                                                                                className={`px-2.5 py-1 rounded text-[9px] font-bold uppercase transition-colors border ${currentFilter === f.id ? 'bg-[#d9531e] text-white border-[#d9531e]' : 'bg-app-card text-slate-400 border-app-border hover:bg-app-border'}`}>
+                                                                                {f.label}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {displayedPaket.length === 0 ? (
+                                                                    <div className="text-center py-4 text-slate-500 text-xs italic">Tidak ada paket.</div>
+                                                                ) : (
+                                                                    isAndroid ? (
+                                                                        <div className="flex flex-col gap-2">
+                                                                            {displayedPaket.map((pkg, pIdx) => {
+                                                                                const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
+                                                                                const isCair = String(pkg.statusPencairan || '').toLowerCase() === 'cair';
+                                                                                const isSukses = String(pkg.status || '').toLowerCase() === 'sukses';
+                                                                                const isCancel = String(pkg.status || '').toLowerCase() === 'cancel' || String(pkg.status || '').toLowerCase() === 'batal';
+                                                                                const isPending = String(pkg.status || '').toLowerCase() === 'pending';
+                                                                                let displayKurir = String(pkg.kurirId || 'Tanpa Kurir').split('@')[0];
+                                                                                let displayTgl = String(pkg.dateString || pkg.tanggal || '-');
+                                                                                if (displayTgl !== '-' && displayTgl.includes('T')) displayTgl = displayTgl.split('T')[0];
+
+                                                                                return (
+                                                                                    <div key={pIdx} className="bg-app-header p-3 rounded-lg border border-app-border flex flex-col gap-2">
+                                                                                        <div className="flex justify-between items-start">
+                                                                                            <div>
+                                                                                                <div className="text-[#d9531e] font-mono font-bold bg-orange-900/20 px-1.5 py-0.5 rounded border border-orange-800/30 inline-block text-[10px]">{pkg.packageId}</div>
+                                                                                                <div className="text-slate-200 font-bold text-xs mt-1">{pkg.customerName}</div>
+                                                                                            </div>
+                                                                                            <div className="flex flex-col items-end gap-1">
+                                                                                                <StatusBadgeAdmin status={pkg.status} />
+                                                                                                {isSukses && (
+                                                                                                    <span className={`text-[7px] font-bold px-1 py-0.5 rounded border ${isCair ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' : 'bg-orange-900/30 text-orange-400 border-orange-800/50'}`}>
+                                                                                                        {isCair ? 'TELAH CAIR' : 'BLM CAIR'}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] mt-1 bg-[#0b1120] p-2 rounded border border-app-border">
+                                                                                            <div className="text-slate-400">Tagihan: <span className="text-slate-200 font-bold">{formatCurrency(tagihan)}</span> ({pkg.metodeBayar || '-'})</div>
+                                                                                            <div className="text-slate-400">Brg (Hrg): <span className={`${isSukses ? 'text-emerald-400' : 'text-slate-400'} font-bold`}>{formatCurrency(hBarang)}</span></div>
+                                                                                            <div className="text-slate-400 col-span-2">Ongkir: <span className={`${isSukses ? 'text-red-400' : 'text-slate-400'} font-bold`}>{formatCurrency(oDasar)}</span> <span className={`${isSukses ? 'text-orange-400' : 'text-slate-500'} font-bold`}>+ {formatCurrency(oTambahan)}</span></div>
+                                                                                        </div>
+                                                                                        {(isCancel || isPending) && (pkg.keterangan || pkg.keteranganStatus) && (
+                                                                                            <div className="text-[8px] font-medium text-orange-300 bg-orange-900/20 p-1.5 rounded border border-orange-900/50 text-center leading-tight">Ket: {pkg.keterangan || pkg.keteranganStatus}</div>
+                                                                                        )}
+                                                                                        <div className="flex justify-between items-center mt-1 pt-1 border-t border-app-border">
+                                                                                            <div className="text-slate-500 text-[8px]"><i className="far fa-calendar-alt mr-1"></i>{displayTgl} | <i className="fas fa-motorcycle mx-1"></i>{displayKurir}</div>
+                                                                                            <div className="flex gap-2">
+                                                                                                {pkg.fotoBukti && <button onClick={(e) => { e.stopPropagation(); setSelectedImage(getFotoUrl(pkg)); }} className="text-blue-400 text-[10px] bg-blue-900/20 px-2 py-1 rounded border border-blue-900/50 hover:bg-blue-800"><i className="fas fa-image mr-1"></i>Foto</button>}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="overflow-x-auto rounded-lg border border-app-border custom-scrollbar">
+                                                                            <table className="w-full text-left text-[9px] md:text-[10px]">
+                                                                                <thead className="bg-app-header text-slate-400 border-b border-app-border uppercase tracking-wider">
+                                                                                    <tr>
+                                                                                        <th className="py-2 px-3 font-bold">Resi & Tgl</th>
+                                                                                        <th className="py-2 px-3 font-bold">Penerima & Kurir</th>
+                                                                                        <th className="py-2 px-3 font-bold text-center">Status</th>
+                                                                                        <th className="py-2 px-3 font-bold text-right">Tagihan & Mtd</th>
+                                                                                        <th className="py-2 px-3 font-bold text-right">Brg (Hrg)</th>
+                                                                                        <th className="py-2 px-3 font-bold text-right">Ongkir (Dsr+Tmb)</th>
+                                                                                        <th className="py-2 px-3 font-bold text-center">Aksi / Bukti</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-app-border/30 bg-app-card/50">
+                                                                                    {displayedPaket.map((pkg, pIdx) => {
+                                                                                        const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
+                                                                                        const isCair = String(pkg.statusPencairan || '').toLowerCase() === 'cair';
+                                                                                        const isSukses = String(pkg.status || '').toLowerCase() === 'sukses';
+                                                                                        const isCancel = String(pkg.status || '').toLowerCase() === 'cancel' || String(pkg.status || '').toLowerCase() === 'batal';
+                                                                                        const isPending = String(pkg.status || '').toLowerCase() === 'pending';
+                                                                                        let displayKurir = String(pkg.kurirId || 'Tanpa Kurir').split('@')[0];
+                                                                                        let displayTgl = String(pkg.dateString || pkg.tanggal || '-');
+                                                                                        if (displayTgl !== '-' && displayTgl.includes('T')) displayTgl = displayTgl.split('T')[0];
+
+                                                                                        return (
+                                                                                            <tr key={pIdx} className="hover:bg-app-border/30 transition-colors">
+                                                                                                <td className="py-2 px-3 whitespace-nowrap">
+                                                                                                    <div className="text-[#d9531e] font-mono font-bold bg-orange-900/20 px-1.5 py-0.5 rounded border border-orange-800/30 inline-block">{pkg.packageId}</div>
+                                                                                                    <div className="text-slate-500 mt-1 text-[8px]"><i className="far fa-calendar-alt mr-1"></i>{displayTgl}</div>
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3">
+                                                                                                    <div className="text-slate-200 font-bold truncate max-w-[120px] md:max-w-[200px]" title={pkg.customerName}>{pkg.customerName}</div>
+                                                                                                    <div className="text-slate-400 text-[8px] mt-0.5 truncate max-w-[120px] md:max-w-[200px]"><i className="fas fa-phone mr-1"></i>{pkg.customerPhone}</div>
+                                                                                                    <div className="text-slate-500 text-[8px] mt-0.5 truncate max-w-[120px] md:max-w-[200px]"><i className="fas fa-motorcycle mr-1"></i>{displayKurir}</div>
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-center whitespace-nowrap">
+                                                                                                    <StatusBadgeAdmin status={pkg.status} />
+                                                                                                    {isSukses && (
+                                                                                                        <div className={`mt-1 text-[7px] font-bold px-1 py-0.5 rounded border inline-block ${isCair ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' : 'bg-orange-900/30 text-orange-400 border-orange-800/50'}`}>
+                                                                                                            {isCair ? 'TELAH CAIR' : 'BLM CAIR'}
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {(isCancel || isPending) && (pkg.keterangan || pkg.keteranganStatus) && (
+                                                                                                        <div className="mt-1 w-full text-[8px] md:text-[9px] font-medium text-orange-300 break-words whitespace-normal bg-[#0b1120] p-1.5 rounded border border-app-border text-center leading-tight shadow-inner" title={pkg.keterangan || pkg.keteranganStatus}>
+                                                                                                            Ket: {pkg.keterangan || pkg.keteranganStatus}
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                                                                    <div className="text-slate-200 font-bold">{formatCurrency(tagihan)}</div>
+                                                                                                    <div className="text-slate-500 text-[8px] font-bold mt-0.5 uppercase">{pkg.metodeBayar || '-'}</div>
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                                                                    <div className={`font-bold ${isSukses ? 'text-emerald-400' : 'text-slate-400'}`}>{formatCurrency(hBarang)}</div>
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                                                                    <div className={`font-bold ${isSukses ? 'text-red-400' : 'text-slate-400'}`} title="Ongkir Dasar">{formatCurrency(oDasar)}</div>
+                                                                                                    <div className={`text-[8px] font-bold mt-0.5 ${isSukses ? 'text-orange-400' : 'text-slate-500'}`} title="Tambahan / Volume">+ {formatCurrency(oTambahan)}</div>
+                                                                                                </td>
+                                                                                                <td className="py-2 px-3 text-center align-middle">
+                                                                                                    <div className="flex flex-col items-center justify-center gap-1.5">
+                                                                                                        {pkg.fotoBukti ? (
+                                                                                                            <div 
+                                                                                                                className="w-14 h-14 md:w-16 md:h-16 mx-auto rounded-md bg-app-header border border-app-border overflow-hidden cursor-pointer hover:opacity-80 transition-opacity shadow-sm" 
+                                                                                                                onClick={(e) => { e.stopPropagation(); setSelectedImage(getFotoUrl(pkg)); }}
+                                                                                                                title="Klik untuk perbesar"
+                                                                                                            >
+                                                                                                                <img src={getFotoUrl(pkg)} className="w-full h-full object-cover" alt="Bukti" />
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            <div className="w-14 h-14 md:w-16 md:h-16 mx-auto rounded-md bg-app-header/50 border border-app-border border-dashed flex flex-col items-center justify-center text-slate-500" title="Tidak Ada Foto">
+                                                                                                                <i className="fas fa-image text-xs mb-1"></i>
+                                                                                                                <span className="text-[8px] font-bold">NO FOTO</span>
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* VIEW KURIR SETORAN */}
+                        {activeTab === 'kurir' && (
+                            <div className="flex flex-col gap-4">
+                                <div className="bg-app-card rounded-xl shadow-sm border border-app-border overflow-hidden">
+                                    <div className="p-3 md:p-4 border-b border-app-border bg-app-header">
+                                        <h3 className="font-bold text-slate-200 text-xs md:text-sm"><i className="fas fa-motorcycle text-emerald-500 mr-2"></i> Pendapatan Bersih Kurir (Aktual)</h3>
+                                        <p className="text-[10px] text-slate-400 mt-1">Sesuai Skema: <b>75% Ongkir Dasar</b> + <b>100% Ongkir Tambahan (Volum)</b></p>
+                                    </div>
+                                    <div className="overflow-x-auto custom-scrollbar">
+                                        <div className={`${!isAndroid ? 'min-w-[900px]' : 'w-full'} flex flex-col`}>
+                                            {kurirReport.length === 0 ? (
+                                                <div className="p-8 text-center text-slate-500">Belum ada data kurir pada periode ini.</div>
+                                            ) : (
+                                                !isAndroid ? (
+                                                    <div className="grid grid-cols-[200px_100px_1fr_1fr_1fr_1fr] gap-3 px-4 py-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-[#0b1120] border-b border-app-border items-center">
+                                                        <div>NAMA KURIR</div>
+                                                        <div className="text-center">PKT SUKSES</div>
+                                                        <div className="text-right">ONGKIR DSR TOTAL</div>
+                                                        <div className="text-right text-emerald-400">FEE KURIR (75%)</div>
+                                                        <div className="text-right text-orange-400">VOLUM / EXTRA (100%)</div>
+                                                        <div className="text-right text-blue-400">TOTAL TAKE HOME</div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="px-4 py-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-[#0b1120] border-b border-app-border">RINCIAN PENDAPATAN KURIR</div>
+                                                )
+                                            )}
+                                            
+                                            {[...kurirReport].map((kur, idx) => {
+                                                const feeDasarKurir = (kur.totalDasarOngkir * skemaPct.kurir) / 100;
+                                                const feeVolumKurir = kur.totalTambahanOngkir;
+                                                const totalTakeHome = feeDasarKurir + feeVolumKurir;
+
+                                                if (isAndroid) {
+                                                    return (
+                                                        <div key={idx} className="flex flex-col gap-2 px-4 py-4 border-b border-app-border">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="font-bold text-slate-200 uppercase text-xs"><i className="fas fa-motorcycle mr-1.5 text-emerald-400"></i> {kur.name}</span>
+                                                                <span className="text-[10px] text-slate-400 bg-app-border px-2 py-0.5 rounded font-bold">{kur.totalSukses} Pkt</span>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                                                <div className="bg-[#0b1120] p-2 rounded border border-app-border flex justify-between"><span className="text-slate-500">Dsr(Total):</span><span className="text-slate-300 font-bold">{formatCurrency(kur.totalDasarOngkir)}</span></div>
+                                                                <div className="bg-[#0b1120] p-2 rounded border border-app-border flex justify-between"><span className="text-emerald-500/70">Fee(75%):</span><span className="text-emerald-400 font-bold">{formatCurrency(feeDasarKurir)}</span></div>
+                                                                <div className="bg-[#0b1120] p-2 rounded border border-app-border flex justify-between"><span className="text-orange-400/80">Vol(100%):</span><span className="text-orange-400 font-bold">{formatCurrency(feeVolumKurir)}</span></div>
+                                                                <div className="bg-blue-900/20 p-2 rounded border border-blue-500/30 flex justify-between"><span className="text-blue-400 font-bold">TOTAL:</span><span className="text-blue-400 font-black">{formatCurrency(totalTakeHome)}</span></div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <div key={idx} className="grid grid-cols-[200px_100px_1fr_1fr_1fr_1fr] gap-3 px-4 py-4 border-b border-app-border hover:bg-app-header transition-colors items-center">
+                                                        <div className="font-bold text-slate-200 uppercase truncate text-sm" title={kur.name}>{kur.name}</div>
+                                                        <div className="text-center font-bold text-slate-300">{kur.totalSukses} <span className="text-[9px] text-slate-500 font-normal">Pkt</span></div>
+                                                        <div className="text-right font-semibold text-slate-400">{formatCurrency(kur.totalDasarOngkir)}</div>
+                                                        <div className="text-right font-black text-emerald-400">{formatCurrency(feeDasarKurir)}</div>
+                                                        <div className="text-right font-black text-orange-400">{formatCurrency(feeVolumKurir)}</div>
+                                                        <div className="text-right font-black text-blue-400 bg-blue-900/20 py-1 px-2 rounded">{formatCurrency(totalTakeHome)}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-app-card rounded-xl shadow-sm border border-app-border overflow-hidden">
+                                    <div className="p-3 md:p-4 border-b border-app-border bg-app-header flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-200 text-xs md:text-sm">Rekapitulasi Setoran Kurir <span className="text-[10px] text-slate-400 font-normal ml-2">(Klik baris untuk rincian)</span></h3>
+                                    </div>
+                                    <div className="overflow-x-auto custom-scrollbar">
+                                        <div className={`${!isAndroid ? 'min-w-[1050px]' : 'w-full'} flex flex-col`}>
+                                            {kurirReport.length === 0 ? (
+                                                <div className="p-8 text-center text-slate-500">Tidak ada kinerja kurir di periode/status ini.</div>
+                                            ) : (
+                                                <div className="flex flex-col w-full">
+                                                    {kurirReport.map((kur, idx) => {
+                                                        const isExpanded = expandedKurirs.includes(kur.name);
+                                                        const currentFilter = kurirFilters[kur.name] || 'semua';
+                                                        const displayedPaket = kur.paketTerkait.filter(pkg => {
+                                                            if (currentFilter === 'semua') return true;
+                                                            let stat = String(pkg.status || '').toLowerCase().replace(' ', '_');
+                                                            if (currentFilter === 'proses') return stat === 'siap_antar' || stat === 'proses';
+                                                            return stat === currentFilter;
+                                                        });
+
+                                                        return (
+                                                            <div key={idx} className="flex flex-col border-b border-app-border hover:bg-app-header transition-colors">
+                                                                <div className={`p-3 md:p-4 cursor-pointer flex ${isAndroid ? 'flex-col gap-3' : 'items-center justify-between'}`} onClick={() => toggleKurir(kur.name)}>
+                                                                    <div className={`flex flex-col gap-1 shrink-0 ${!isAndroid ? 'w-[300px]' : 'w-full'}`}>
+                                                                        <div className="flex items-center gap-2.5">
+                                                                            <div className={`w-5 h-5 rounded flex items-center justify-center transition-transform ${isExpanded ? 'bg-blue-500 text-white rotate-180' : 'bg-app-border text-slate-400'}`}><i className="fas fa-chevron-down text-[10px]"></i></div>
+                                                                            <i className="fas fa-motorcycle text-blue-400/80"></i>
+                                                                            <span className="font-bold text-slate-200 uppercase truncate text-xs md:text-sm max-w-[180px]">{kur.name}</span>
+                                                                            <span className="text-[9px] bg-app-border text-slate-300 px-2 py-0.5 rounded shrink-0 font-bold">{kur.paketTerkait.length} Pkt</span>
+                                                                        </div>
+                                                                        <div className="flex gap-2 ml-7 mt-0.5">
+                                                                            <span className="text-[9px] text-emerald-400 font-bold" title="Sukses"><i className="fas fa-check-circle mr-1"></i>{kur.totalSukses}</span>
+                                                                            <span className="text-[9px] text-blue-400 font-bold" title="Proses"><i className="fas fa-truck mr-1"></i>{kur.totalProses}</span>
+                                                                            <span className="text-[9px] text-orange-400 font-bold" title="Pending"><i className="fas fa-clock mr-1"></i>{kur.totalPending}</span>
+                                                                            <span className="text-[9px] text-red-400 font-bold" title="Cancel"><i className="fas fa-times-circle mr-1"></i>{kur.totalCancel}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    
+                                                                    <div className={`flex ${isAndroid ? 'grid grid-cols-2 gap-2 w-full mt-1' : 'flex-1 justify-end items-center gap-5'}`}>
+                                                                        <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`}><span className="text-[8px] font-bold text-emerald-500/70 uppercase tracking-widest mb-0.5">UANG CASH</span><span className="text-xs md:text-sm font-black text-emerald-400">+{formatCurrency(kur.rincianCash)}</span></div>
+                                                                        <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`} title="Hak ongkir tambahan kurir dari paket CASH (Langsung dikantongi)"><span className="text-[8px] font-bold text-orange-400/80 uppercase tracking-widest mb-0.5">SIMPAN(CASH)</span><span className="text-xs md:text-sm font-black text-orange-400">-{formatCurrency(kur.tambahanOngkirCash)}</span></div>
+                                                                        <div className={`flex ${isAndroid ? 'justify-between items-center bg-[#0b1120] p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[70px]'}`} title="Hak ongkir tambahan kurir dari paket TF (Dibayar kantor dengan memotong setoran)"><span className="text-[8px] font-bold text-purple-400/80 uppercase tracking-widest mb-0.5">POTONG(TF)</span><span className="text-xs md:text-sm font-black text-purple-400">-{formatCurrency(kur.tambahanOngkirTF)}</span></div>
+                                                                        <div className={`flex ${isAndroid ? 'justify-between items-center bg-app-header p-2 rounded border border-app-border' : 'flex-col items-end justify-center min-w-[80px] pl-2 border-l border-app-border'}`}><span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">WAJIB SETOR</span><span className={`text-[13px] md:text-[15px] font-black ${kur.setoran >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{formatCurrency(kur.setoran)}</span></div>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {isExpanded && (
+                                                                    <div className="p-3 md:p-4 bg-[#0b1120] border-t border-app-border">
+                                                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-3">
+                                                                            <h4 className="text-slate-400 font-bold text-[10px] uppercase tracking-widest flex items-center"><i className="fas fa-boxes mr-2"></i>Rincian Bawaan: {kur.name}</h4>
+                                                                            <div className="flex flex-wrap gap-1.5">
+                                                                                {[{id:'semua', label:'Semua'}, {id:'sukses', label:'Sukses'}, {id:'proses', label:'Proses'}, {id:'pending', label:'Pending'}, {id:'cancel', label:'Cancel'}].map(f => (
+                                                                                    <button key={f.id} onClick={(e) => { e.stopPropagation(); setKurirFilters(prev => ({...prev, [kur.name]: f.id})); }}
+                                                                                        className={`px-2.5 py-1 rounded text-[9px] font-bold uppercase transition-colors border ${currentFilter === f.id ? 'bg-blue-500 text-white border-blue-500' : 'bg-app-card text-slate-400 border-app-border hover:bg-app-border'}`}>
+                                                                                        {f.label}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        {displayedPaket.length === 0 ? (
+                                                                            <div className="text-center py-4 text-slate-500 text-xs italic">Tidak ada paket bawaan.</div>
+                                                                        ) : (
+                                                                            isAndroid ? (
+                                                                                <div className="flex flex-col gap-2">
+                                                                                    {displayedPaket.map((pkg, pIdx) => {
+                                                                                        const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
+                                                                                        const isSukses = String(pkg.status || '').toLowerCase() === 'sukses';
+                                                                                        const isCancel = String(pkg.status || '').toLowerCase() === 'cancel' || String(pkg.status || '').toLowerCase() === 'batal';
+                                                                                        const isPending = String(pkg.status || '').toLowerCase() === 'pending';
+                                                                                        let displayTgl = String(pkg.dateString || pkg.tanggal || '-');
+                                                                                        if (displayTgl !== '-' && displayTgl.includes('T')) displayTgl = displayTgl.split('T')[0];
+
+                                                                                        return (
+                                                                                            <div key={pIdx} className="bg-app-header p-3 rounded-lg border border-app-border flex flex-col gap-2">
+                                                                                                <div className="flex justify-between items-start">
+                                                                                                    <div>
+                                                                                                        <div className="text-[#d9531e] font-mono font-bold bg-orange-900/20 px-1.5 py-0.5 rounded border border-orange-800/30 inline-block text-[10px]">{pkg.packageId}</div>
+                                                                                                        <div className="text-slate-400 text-[8px] mt-1"><i className="fas fa-store mr-1"></i>{pkg.olshopName}</div>
+                                                                                                        <div className="text-slate-200 font-bold text-xs mt-0.5">{pkg.customerName}</div>
+                                                                                                    </div>
+                                                                                                    <div className="flex flex-col items-end gap-1">
+                                                                                                        <StatusBadgeAdmin status={pkg.status} />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] mt-1 bg-[#0b1120] p-2 rounded border border-app-border">
+                                                                                                    <div className="text-slate-400">Tagihan: <span className="text-slate-200 font-bold">{formatCurrency(tagihan)}</span> ({pkg.metodeBayar || '-'})</div>
+                                                                                                    <div className="text-slate-400">Brg (Hrg): <span className={`${isSukses ? 'text-emerald-400' : 'text-slate-400'} font-bold`}>{formatCurrency(hBarang)}</span></div>
+                                                                                                    <div className="text-slate-400 col-span-2">Ongkir: <span className={`${isSukses ? 'text-red-400' : 'text-slate-400'} font-bold`}>{formatCurrency(oDasar)}</span> <span className={`${isSukses ? 'text-orange-400' : 'text-slate-500'} font-bold`}>+ {formatCurrency(oTambahan)}</span></div>
+                                                                                                </div>
+                                                                                                {(isCancel || isPending) && (pkg.keterangan || pkg.keteranganStatus) && (
+                                                                                                    <div className="text-[8px] font-medium text-orange-300 bg-orange-900/20 p-1.5 rounded border border-orange-900/50 text-center leading-tight">Ket: {pkg.keterangan || pkg.keteranganStatus}</div>
+                                                                                                )}
+                                                                                                <div className="flex justify-between items-center mt-1 pt-1 border-t border-app-border">
+                                                                                                    <div className="text-slate-500 text-[8px]"><i className="far fa-calendar-alt mr-1"></i>{displayTgl} | <i className="fas fa-map-marker-alt mx-1"></i>{pkg.address || '-'}</div>
+                                                                                                    <div className="flex gap-2 shrink-0">
+                                                                                                        {pkg.fotoBukti && <button onClick={(e) => { e.stopPropagation(); setSelectedImage(getFotoUrl(pkg)); }} className="text-blue-400 text-[10px] bg-blue-900/20 px-2 py-1 rounded border border-blue-900/50 hover:bg-blue-800"><i className="fas fa-image mr-1"></i>Foto</button>}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="overflow-x-auto rounded-lg border border-app-border custom-scrollbar">
+                                                                                    <table className="w-full text-left text-[9px] md:text-[10px]">
+                                                                                        <thead className="bg-app-header text-slate-400 border-b border-app-border uppercase tracking-wider">
+                                                                                            <tr>
+                                                                                                <th className="py-2 px-3 font-bold">Resi & Tgl</th>
+                                                                                                <th className="py-2 px-3 font-bold">Olshop & Penerima</th>
+                                                                                                <th className="py-2 px-3 font-bold text-center">Status</th>
+                                                                                                <th className="py-2 px-3 font-bold text-right">Tagihan & Mtd</th>
+                                                                                                <th className="py-2 px-3 font-bold text-right">Brg (Hrg)</th>
+                                                                                                <th className="py-2 px-3 font-bold text-right">Ongkir (Dsr+Tmb)</th>
+                                                                                                <th className="py-2 px-3 font-bold text-center">Aksi / Bukti</th>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody className="divide-y divide-app-border/30 bg-app-card/50">
+                                                                                            {displayedPaket.map((pkg, pIdx) => {
+                                                                                                const { hBarang, tagihan, oDasar, oTambahan } = getFinancials(pkg);
+                                                                                                const isCair = String(pkg.statusPencairan || '').toLowerCase() === 'cair';
+                                                                                                const isSukses = String(pkg.status || '').toLowerCase() === 'sukses';
+                                                                                                const isCancel = String(pkg.status || '').toLowerCase() === 'cancel' || String(pkg.status || '').toLowerCase() === 'batal';
+                                                                                                const isPending = String(pkg.status || '').toLowerCase() === 'pending';
+                                                                                                let displayTgl = String(pkg.dateString || pkg.tanggal || '-');
+                                                                                                if (displayTgl !== '-' && displayTgl.includes('T')) displayTgl = displayTgl.split('T')[0];
+
+                                                                                                return (
+                                                                                                    <tr key={pIdx} className="hover:bg-app-border/30 transition-colors">
+                                                                                                        <td className="py-2 px-3 whitespace-nowrap">
+                                                                                                            <div className="text-[#d9531e] font-mono font-bold bg-orange-900/20 px-1.5 py-0.5 rounded border border-orange-800/30 inline-block">{pkg.packageId}</div>
+                                                                                                            <div className="text-slate-500 mt-1 text-[8px]"><i className="far fa-calendar-alt mr-1"></i>{displayTgl}</div>
+                                                                                                        </td>
+                                                                                                        <td className="py-2 px-3">
+                                                                                                            <div className="text-slate-400 text-[8px] mb-0.5 truncate max-w-[120px] md:max-w-[200px]"><i className="fas fa-store mr-1"></i>{pkg.olshopName}</div>
+                                                                                                            <div className="text-slate-200 font-bold truncate max-w-[120px] md:max-w-[200px]" title={pkg.customerName}>{pkg.customerName}</div>
+                                                                                                            <div className="text-slate-500 text-[8px] mt-0.5 truncate max-w-[120px] md:max-w-[200px]"><i className="fas fa-map-marker-alt mr-1"></i>{pkg.address || '-'}</div>
+                                                                                                        </td>
+                                                                                                        <td className="py-2 px-3 text-center whitespace-nowrap">
+                                                                                                            <StatusBadgeAdmin status={pkg.status} />
+                                                                                                            {(isCancel || isPending) && (pkg.keterangan || pkg.keteranganStatus) && (
+                                                                                                                <div className="mt-1 w-full text-[8px] md:text-[9px] font-medium text-orange-300 break-words whitespace-normal bg-[#0b1120] p-1.5 rounded border border-app-border text-center leading-tight shadow-inner" title={pkg.keterangan || pkg.keteranganStatus}>
+                                                                                                                    Ket: {pkg.keterangan || pkg.keteranganStatus}
+                                                                                                                </div>
+                                                                                                            )}
+                                                                                                        </td>
+                                                                                                        <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                                                                            <div className="text-slate-200 font-bold">{formatCurrency(tagihan)}</div>
+                                                                                                            <div className="text-slate-500 text-[8px] font-bold mt-0.5 uppercase">{pkg.metodeBayar || '-'}</div>
+                                                                                                        </td>
+                                                                                                        <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                                                                            <div className={`font-bold ${isSukses ? 'text-emerald-400' : 'text-slate-400'}`}>{formatCurrency(hBarang)}</div>
+                                                                                                        </td>
+                                                                                                        <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                                                                            <div className={`font-bold ${isSukses ? 'text-red-400' : 'text-slate-400'}`} title="Ongkir Dasar">{formatCurrency(oDasar)}</div>
+                                                                                                            <div className={`text-[8px] font-bold mt-0.5 ${isSukses ? 'text-orange-400' : 'text-slate-500'}`} title="Tambahan / Volume">+ {formatCurrency(oTambahan)}</div>
+                                                                                                        </td>
+                                                                                                        <td className="py-2 px-3 text-center align-middle">
+                                                                                                            <div className="flex flex-col items-center justify-center gap-1.5">
+                                                                                                                {pkg.fotoBukti ? (
+                                                                                                                    <div 
+                                                                                                                        className="w-14 h-14 md:w-16 md:h-16 mx-auto rounded-md bg-app-header border border-app-border overflow-hidden cursor-pointer hover:opacity-80 transition-opacity shadow-sm" 
+                                                                                                                        onClick={(e) => { e.stopPropagation(); setSelectedImage(getFotoUrl(pkg)); }}
+                                                                                                                        title="Klik untuk perbesar"
+                                                                                                                    >
+                                                                                                                        <img src={getFotoUrl(pkg)} className="w-full h-full object-cover" alt="Bukti" />
+                                                                                                                    </div>
+                                                                                                                ) : (
+                                                                                                                    <div className="w-14 h-14 md:w-16 md:h-16 mx-auto rounded-md bg-app-header/50 border border-app-border border-dashed flex flex-col items-center justify-center text-slate-500" title="Tidak Ada Foto">
+                                                                                                                        <i className="fas fa-image text-xs mb-1"></i>
+                                                                                                                        <span className="text-[8px] font-bold">NO FOTO</span>
+                                                                                                                    </div>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                        </td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            })}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    <div className="bg-app-header border-t-2 border-blue-500/50 p-4 mt-2 rounded-b-xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-full bg-blue-900/50 border border-blue-500/50 flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                                                <i className="fas fa-sigma text-xl"></i>
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="font-black text-white text-sm md:text-base uppercase tracking-widest">AKUMULASI KESELURUHAN</h3>
+                                                                <p className="text-[10px] text-blue-400 font-bold">Total dari {kurirReport.length} Kurir Aktif</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-4 md:gap-8 flex-wrap justify-center">
+                                                            <div className="flex flex-col items-center justify-center bg-app-card px-4 py-2 rounded-lg border border-app-border">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase mb-1"><i className="fas fa-boxes text-slate-500 mr-1"></i> Total Pkt Sukses</span>
+                                                                <span className="text-base md:text-lg font-black text-white">{globalSummary.totalPaketSukses} <span className="text-[10px] text-slate-500 font-normal">Pkt</span></span>
+                                                            </div>
+                                                            <div className="flex flex-col items-center justify-center bg-emerald-900/20 px-4 py-2 rounded-lg border border-emerald-500/20">
+                                                                <span className="text-[9px] font-bold text-emerald-500/70 uppercase mb-1"><i className="fas fa-money-bill-wave text-emerald-600 mr-1"></i> Wajib Setor Total</span>
+                                                                <span className="text-base md:text-xl font-black text-emerald-400">{formatCurrency(globalSummary.totalSetoranKurir)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* VIEW CEK LOKASI CUSTOMER */}
+                        {activeTab === 'lokasi' && (
+                            <div className="flex flex-col gap-4">
+                                {/* HEADER INFORMATIF */}
+                                <div className="bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl p-5 md:p-6 text-white shadow-lg border border-cyan-500/30 relative overflow-hidden">
+                                    <div className="absolute -right-4 -bottom-6 opacity-20">
+                                        <i className="fas fa-map-marked-alt text-[120px]"></i>
+                                    </div>
+                                    <div className="relative z-10">
+                                        <h3 className="font-black text-lg md:text-xl mb-2 flex items-center">
+                                            <i className="fas fa-map-marker-alt mr-3 text-cyan-200"></i>
+                                            Cek Lokasi Customer
+                                        </h3>
+                                        <p className="text-cyan-100 text-xs md:text-sm max-w-xl">
+                                            Masukkan nomor HP customer untuk melihat informasi detail dan lokasi terkini pada peta interaktif. 
+                                            Sistem akan mencari dari seluruh data paket yang tersedia.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* SEARCH BOX */}
+                                <div className="bg-app-card rounded-xl p-4 md:p-5 border border-app-border shadow-sm">
+                                    <label className="block text-slate-300 text-xs md:text-sm font-bold mb-3 flex items-center">
+                                        <i className="fas fa-search text-cyan-400 mr-2"></i>
+                                        Cari Berdasarkan Nomor HP Customer
+                                    </label>
+                                    <div className="flex flex-col md:flex-row gap-3">
+                                        <div className="relative flex-1">
+                                            <i className="fas fa-mobile-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-base"></i>
+                                            <input 
+                                                type="tel" 
+                                                placeholder="Contoh: 081234567890"
+                                                value={lokasiSearchPhone}
+                                                onChange={(e) => setLokasiSearchPhone(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && handleLokasiSearch()}
+                                                className="w-full pl-12 pr-4 py-3.5 bg-app-header border border-app-border rounded-xl text-sm outline-none focus:border-cyan-500 text-white placeholder-slate-500 transition-colors font-medium"
+                                            />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={handleLokasiSearch}
+                                                disabled={lokasiSearchStatus === 'searching' || !lokasiSearchPhone.trim()}
+                                                className={`flex-1 md:flex-none px-6 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                                                    lokasiSearchStatus === 'searching' || !lokasiSearchPhone.trim()
+                                                        ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                                                        : 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg shadow-cyan-500/20'
+                                                }`}
+                                            >
+                                                {lokasiSearchStatus === 'searching' ? (
+                                                    <><i className="fas fa-circle-notch fa-spin"></i> Mencari...</>
+                                                ) : (
+                                                    <><i className="fas fa-location-arrow"></i> Cek Lokasi</>
+                                                )}
+                                            </button>
+                                            {(lokasiSearchPhone || lokasiSearchResult) && (
+                                                <button 
+                                                    onClick={() => {
+                                                        setLokasiSearchPhone('');
+                                                        setLokasiSearchResult(null);
+                                                        setLokasiSearchStatus('idle');
+                                                        if (lokasiMapRef) { lokasiMapRef.remove(); setLokasiMapRef(null); }
+                                                    }}
+                                                    className="px-4 py-3.5 bg-app-header border border-app-border rounded-xl text-slate-400 hover:text-white hover:bg-app-border transition-colors"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] md:text-[11px] text-slate-500 mt-3 flex items-center">
+                                        <i className="fas fa-info-circle mr-1.5 text-slate-600"></i>
+                                        Masukkan nomor HP secara lengkap atau sebagian. Sistem akan mencocokkan dengan database customer.
+                                    </p>
+                                </div>
+
+                                {/* STATUS: IDLE - Belum mencari */}
+                                {lokasiSearchStatus === 'idle' && !lokasiSearchResult && (
+                                    <div className="bg-app-card rounded-xl p-8 md:p-12 border border-app-border text-center">
+                                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-cyan-900/30 border border-cyan-500/30 flex items-center justify-center">
+                                            <i className="fas fa-map text-cyan-400 text-3xl"></i>
+                                        </div>
+                                        <h4 className="text-slate-200 font-bold text-base md:text-lg mb-2">Siap Mencari Lokasi</h4>
+                                        <p className="text-slate-400 text-xs md:text-sm max-w-md mx-auto">
+                                            Masukkan nomor HP customer pada kolom di atas dan klik "Cek Lokasi" 
+                                            untuk melihat informasi detail dan posisi customer pada peta.
+                                        </p>
+                                        <div className="grid grid-cols-3 gap-3 mt-6 max-w-lg mx-auto">
+                                            <div className="bg-app-header p-3 rounded-lg border border-app-border">
+                                                <i className="fas fa-phone text-cyan-400 text-lg mb-1"></i>
+                                                <p className="text-[9px] text-slate-400 font-bold">Cari via No HP</p>
+                                            </div>
+                                            <div className="bg-app-header p-3 rounded-lg border border-app-border">
+                                                <i className="fas fa-map text-blue-400 text-lg mb-1"></i>
+                                                <p className="text-[9px] text-slate-400 font-bold">Lihat di Peta</p>
+                                            </div>
+                                            <div className="bg-app-header p-3 rounded-lg border border-app-border">
+                                                <i className="fas fa-info-circle text-emerald-400 text-lg mb-1"></i>
+                                                <p className="text-[9px] text-slate-400 font-bold">Info Lengkap</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STATUS: NOT FOUND - Customer tidak ditemukan */}
+                                {lokasiSearchStatus === 'notfound' && (
+                                    <div className="bg-app-card rounded-xl p-8 border border-app-border text-center">
+                                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-red-900/30 border border-red-500/30 flex items-center justify-center">
+                                            <i className="fas fa-user-slash text-red-400 text-3xl"></i>
+                                        </div>
+                                        <h4 className="text-slate-200 font-bold text-base mb-2">Customer Tidak Ditemukan</h4>
+                                        <p className="text-slate-400 text-sm max-w-md mx-auto mb-4">
+                                            Tidak ada data customer dengan nomor HP "<span className="text-red-400 font-bold">{lokasiSearchPhone}</span>" 
+                                            dalam database. Pastikan nomor yang dimasukkan benar.
+                                        </p>
+                                        <div className="inline-flex items-center gap-2 bg-app-header px-4 py-2 rounded-lg border border-app-border text-xs text-slate-400">
+                                            <i className="fas fa-lightbulb text-yellow-500"></i>
+                                            <span>Coba masukkan nomor yang lebih singkat atau periksa kembali data input</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STATUS: EMPTY - Customer ditemukan tapi data lokasi kosong */}
+                                {lokasiSearchStatus === 'empty' && lokasiSearchResult && (
+                                    <div className="flex flex-col lg:flex-row gap-4">
+                                        {/* Info Customer Card */}
+                                        <div className="lg:w-2/5 bg-app-card rounded-xl border border-app-border shadow-sm overflow-hidden">
+                                            <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-3 flex items-center gap-2">
+                                                <i className="fas fa-exclamation-triangle text-yellow-500"></i>
+                                                <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">Data Lokasi Kosong</span>
+                                            </div>
+                                            <div className="p-4 md:p-5">
+                                                <div className="flex items-center gap-3 mb-4 pb-4 border-b border-app-border">
+                                                    <div className="w-12 h-12 rounded-full bg-cyan-900/30 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                                                        <i className="fas fa-user text-cyan-400 text-lg"></i>
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h4 className="text-white font-bold text-sm md:text-base truncate">{lokasiSearchResult.name}</h4>
+                                                        <p className="text-slate-400 text-xs flex items-center gap-1">
+                                                            <i className="fas fa-phone text-slate-500"></i>
+                                                            {lokasiSearchResult.phone}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="space-y-3">
+                                                    <div className="flex items-start gap-3">
+                                                        <i className="fas fa-map-marker-alt text-slate-500 mt-0.5 w-4 text-center shrink-0"></i>
+                                                        <div>
+                                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-0.5">Alamat</p>
+                                                            <p className="text-slate-300 text-xs">{lokasiSearchResult.address}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <i className="fas fa-store text-slate-500 mt-0.5 w-4 text-center shrink-0"></i>
+                                                        <div>
+                                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-0.5">Olshop</p>
+                                                            <p className="text-slate-300 text-xs">{lokasiSearchResult.olshop}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <i className="fas fa-motorcycle text-slate-500 mt-0.5 w-4 text-center shrink-0"></i>
+                                                        <div>
+                                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-0.5">Kurir</p>
+                                                            <p className="text-slate-300 text-xs">{lokasiSearchResult.kurir}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <i className="fas fa-box text-slate-500 mt-0.5 w-4 text-center shrink-0"></i>
+                                                        <div>
+                                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-0.5">Total Riwayat Paket</p>
+                                                            <p className="text-cyan-400 font-bold text-sm">{lokasiSearchResult.totalFound} paket</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Peringatan data lokasi kosong - LEBIH INFORMATIF */}
+                                                <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                                                    <div className="flex items-start gap-3">
+                                                        <i className="fas fa-exclamation-circle text-yellow-500 text-lg mt-0.5 shrink-0"></i>
+                                                        <div className="flex-1">
+                                                            <p className="text-yellow-400 font-bold text-xs mb-2 flex items-center gap-2">
+                                                                Koordinat Lokasi Belum Tersedia
+                                                                <span className="text-[9px] bg-yellow-500/20 px-2 py-0.5 rounded-full border border-yellow-500/30">
+                                                                    {lokasiSearchResult.totalFound} paket diperiksa
+                                                                </span>
+                                                            </p>
+                                                            <p className="text-yellow-100/80 text-[11px] leading-relaxed mb-3">
+                                                                Data customer <strong className="text-yellow-200">{lokasiSearchResult.name}</strong> ditemukan, 
+                                                                namun titik koordinat pada sheet/spreadsheet masih kosong atau belum terdeteksi.
+                                                            </p>
+                                                            
+                                                            {/* Daftar nama kolom yang dicari sistem */}
+                                                            <div className="bg-black/20 rounded-lg p-3 border border-yellow-500/20 mb-3">
+                                                                <p className="text-yellow-300/80 text-[10px] font-bold uppercase mb-2 flex items-center gap-1.5">
+                                                                    <i className="fas fa-list-ol"></i>
+                                                                    Nama kolom koordinat yang didukung sistem:
+                                                                </p>
+                                                                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-slate-400">Latitude:</span>
+                                                                        <code className="text-yellow-300 bg-yellow-500/10 px-1.5 py-0.5 rounded text-[9px]">latitude, lat</code>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-slate-400">Longitude:</span>
+                                                                        <code className="text-yellow-300 bg-yellow-500/10 px-1.5 py-0.5 rounded text-[9px]">longitude, lng, lon</code>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Solusi yang bisa dilakukan */}
+                                                            <div className="space-y-1.5">
+                                                                <p className="text-yellow-200/70 text-[10px] flex items-start gap-1.5">
+                                                                    <span className="text-yellow-400 font-bold shrink-0">1.</span>
+                                                                    <span>Pastikan di Google Sheet/AppSheet ada kolom bernama <code className="text-yellow-300 bg-yellow-500/10 px-1 rounded">latitude</code> dan <code className="text-yellow-300 bg-yellow-500/10 px-1 rounded">longitude</code></span>
+                                                                </p>
+                                                                <p className="text-yellow-200/70 text-[10px] flex items-start gap-1.5">
+                                                                    <span className="text-yellow-400 font-bold shrink-0">2.</span>
+                                                                    <span>Isi dengan nilai koordinat yang valid (contoh: <code className="text-yellow-300">-2.5489</code> dan <code className="text-yellow-300">140.7158</code>), bukan angka 0 atau kosong</span>
+                                                                </p>
+                                                                <p className="text-yellow-200/70 text-[10px] flex items-start gap-1.5">
+                                                                    <span className="text-yellow-400 font-bold shrink-0">3.</span>
+                                                                    <span>Jika angka ditulis dengan petik (seperti <code className="text-yellow-300">'0</code>), sistem otomatis membersihkannya</span>
+                                                                </p>
+                                                                <p className="text-yellow-200/70 text-[10px] flex items-start gap-1.5">
+                                                                    <span className="text-yellow-400 font-bold shrink-0">4.</span>
+                                                                    <span>Format nomor HP fleksibel: <code className="text-yellow-300">0812...</code>, <code className="text-yellow-300">+62812...</code>, <code className="text-yellow-300">62812...</code> semua didukung</span>
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Peta placeholder - kosong */}
+                                        <div className="lg:w-3/5 bg-app-card rounded-xl border border-app-border shadow-sm overflow-hidden flex flex-col">
+                                            <div className="bg-app-header border-b border-app-border px-4 py-3 flex items-center justify-between">
+                                                <h4 className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                                                    <i className="fas fa-map text-slate-500"></i>
+                                                    Peta Lokasi
+                                                </h4>
+                                                <button 
+                                                    onClick={() => setShowDebugInfo(!showDebugInfo)}
+                                                    className="text-[10px] px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600 flex items-center gap-1 transition-colors"
+                                                >
+                                                    <i className="fas fa-bug"></i>
+                                                    {showDebugInfo ? 'Sembunyikan Debug' : 'Mode Debug'}
+                                                </button>
+                                            </div>
+                                            
+                                            {showDebugInfo && lokasiSearchResult && lokasiSearchResult.allPackages && lokasiSearchResult.allPackages[0] ? (
+                                                <div className="flex-1 overflow-auto p-4 bg-[#0f172a]">
+                                                    <div className="mb-3 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-lg">
+                                                        <p className="text-cyan-300 font-bold text-[11px] mb-1 flex items-center gap-1.5">
+                                                            <i className="fas fa-info-circle"></i>
+                                                            Informasi Struktur Data
+                                                        </p>
+                                                        <p className="text-cyan-200/70 text-[10px] leading-relaxed">
+                                                            Di bawah ini adalah SEMUA kolom/field yang tersedia pada data paket customer ini. 
+                                                            Periksa apakah ada kolom koordinat dengan nama yang berbeda dari yang didukung sistem.
+                                                        </p>
+                                                    </div>
+                                                    <div className="bg-black/40 rounded-lg p-3 border border-slate-700">
+                                                        <p className="text-slate-400 text-[10px] font-bold uppercase mb-2 tracking-wider">Semua Field yang Tersedia:</p>
+                                                        <div className="grid grid-cols-1 gap-1.5 max-h-[350px] overflow-auto custom-scrollbar pr-2">
+                                                            {Object.entries(lokasiSearchResult.allPackages[0]).map(([key, value], idx) => (
+                                                                <div key={idx} className="flex items-start gap-2 p-2 bg-app-header/50 rounded border border-app-border/50 text-[10px]">
+                                                                    <span className="text-orange-400 font-mono font-bold shrink-0 min-w-[120px]">{key}</span>
+                                                                    <span className="text-slate-300 break-all">
+                                                                        {value === null || value === undefined ? (
+                                                                            <span className="text-slate-500 italic">null</span>
+                                                                        ) : String(value).trim() === '' ? (
+                                                                            <span className="text-slate-500 italic">(kosong)</span>
+                                                                        ) : (
+                                                                            <span className={String(value).length > 50 ? 'text-yellow-300' : ''}>
+                                                                                {String(value).substring(0, 80)}
+                                                                                {String(value).length > 80 && '...'}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-3 p-3 bg-emerald-900/20 border border-emerald-500/30 rounded-lg">
+                                                        <p className="text-emerald-300 font-bold text-[11px] mb-1.5 flex items-center gap-1.5">
+                                                            <i className="fas fa-lightbulb"></i>
+                                                            Cara Mengatasi:
+                                                        </p>
+                                                        <ol className="text-emerald-200/70 text-[10px] space-y-1 list-decimal list-inside leading-relaxed">
+                                                            <li>Jika Anda melihat kolom koordinat dengan nama berbeda (misal: <code className="text-emerald-300">titik_lat</code>), beri tahu saya nama kolom tersebut</li>
+                                                            <li>Pastikan nilai koordinat berupa angka desimal, bukan 0 atau kosong</li>
+                                                            <li>Update kode Google Apps Script agar mengirim kolom koordinat tersebut</li>
+                                                        </ol>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex-1 bg-[#0f172a] flex flex-col items-center justify-center p-6 text-center">
+                                                    <div className="w-24 h-24 rounded-full bg-slate-800 border-2 border-dashed border-slate-600 flex items-center justify-center mb-4">
+                                                        <i className="fas fa-map-marked-alt text-slate-600 text-4xl"></i>
+                                                    </div>
+                                                    <h5 className="text-slate-400 font-bold text-sm mb-2">Peta Tidak Tersedia</h5>
+                                                    <p className="text-slate-500 text-xs max-w-xs mb-3">
+                                                        Data koordinat lokasi belum diisi pada sheet titik lokasi. 
+                                                        Tambahkan latitude dan longitude untuk menampilkan posisi pada peta.
+                                                    </p>
+                                                    <button 
+                                                        onClick={() => setShowDebugInfo(true)}
+                                                        className="text-[10px] px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600 flex items-center gap-1.5 transition-colors mx-auto"
+                                                    >
+                                                        <i className="fas fa-bug"></i>
+                                                        Cek Struktur Data (Debug)
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STATUS: FOUND - Customer ditemukan dengan data lokasi lengkap */}
+                                {lokasiSearchStatus === 'found' && lokasiSearchResult && (
+                                    <div className="flex flex-col lg:flex-row gap-4">
+                                        {/* Info Customer Card */}
+                                        <div className="lg:w-2/5 bg-app-card rounded-xl border border-app-border shadow-sm overflow-hidden">
+                                            <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-cyan-500/30 px-4 py-3 flex items-center gap-2">
+                                                <i className="fas fa-user-check text-cyan-400"></i>
+                                                <span className="text-cyan-300 font-bold text-xs uppercase tracking-wider">Customer Ditemukan</span>
+                                            </div>
+                                            <div className="p-4 md:p-5">
+                                                <div className="flex items-center gap-3 mb-4 pb-4 border-b border-app-border">
+                                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/20">
+                                                        <i className="fas fa-user text-white text-xl"></i>
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="text-white font-bold text-sm md:text-base truncate">{lokasiSearchResult.name}</h4>
+                                                        <p className="text-cyan-400 text-xs flex items-center gap-1 font-medium">
+                                                            <i className="fas fa-phone text-cyan-500"></i>
+                                                            {lokasiSearchResult.phone}
+                                                        </p>
+                                                        <StatusBadgeAdmin status={lokasiSearchResult.status} />
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="space-y-3.5">
+                                                    <div className="flex items-start gap-3 p-3 bg-app-header/50 rounded-lg border border-app-border/50">
+                                                        <i className="fas fa-map-marker-alt text-cyan-400 mt-0.5 w-4 text-center shrink-0"></i>
+                                                        <div className="min-w-0">
+                                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Alamat Lengkap</p>
+                                                            <p className="text-slate-200 text-xs leading-relaxed">{lokasiSearchResult.address}</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="p-2.5 bg-app-header/50 rounded-lg border border-app-border/50">
+                                                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Olshop</p>
+                                                            <p className="text-slate-200 text-[11px] font-medium truncate">{lokasiSearchResult.olshop}</p>
+                                                        </div>
+                                                        <div className="p-2.5 bg-app-header/50 rounded-lg border border-app-border/50">
+                                                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Kurir</p>
+                                                            <p className="text-slate-200 text-[11px] font-medium truncate">{lokasiSearchResult.kurir}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="p-2.5 bg-app-header/50 rounded-lg border border-app-border/50">
+                                                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Resi Terakhir</p>
+                                                            <p className="text-orange-400 text-[11px] font-mono font-bold">{lokasiSearchResult.packageId}</p>
+                                                        </div>
+                                                        <div className="p-2.5 bg-app-header/50 rounded-lg border border-app-border/50">
+                                                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Total Paket</p>
+                                                            <p className="text-emerald-400 text-[11px] font-bold">{lokasiSearchResult.totalFound} paket</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Koordinat info - LEBIH LENGKAP */}
+                                                    <div className="p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-lg">
+                                                        <p className="text-[10px] text-cyan-400 font-bold uppercase mb-2 flex items-center gap-1.5">
+                                                            <i className="fas fa-crosshairs"></i>
+                                                            Titik Koordinat Lokasi
+                                                            {lokasiSearchResult.latSource && (
+                                                                <span className="text-[8px] bg-cyan-500/20 px-1.5 py-0.5 rounded-full border border-cyan-500/30 text-cyan-300 normal-case font-medium ml-1">
+                                                                    via kolom: {lokasiSearchResult.latSource}
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <p className="text-[9px] text-cyan-300/60 mb-0.5">Latitude</p>
+                                                                <p className="text-cyan-200 text-xs font-mono font-bold">{lokasiSearchResult.latitude}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[9px] text-cyan-300/60 mb-0.5">Longitude</p>
+                                                                <p className="text-cyan-200 text-xs font-mono font-bold">{lokasiSearchResult.longitude}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Tombol arah navigasi */}
+                                                <a 
+                                                    href={`https://www.google.com/maps/dir/?api=1&destination=${Number(lokasiSearchResult.latitude)},${Number(lokasiSearchResult.longitude)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-cyan-500/20"
+                                                >
+                                                    <i className="fas fa-route"></i>
+                                                    Buka Navigasi Google Maps
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        {/* Peta Interaktif */}
+                                        <div className="lg:w-3/5 bg-app-card rounded-xl border border-app-border shadow-sm overflow-hidden flex flex-col">
+                                            <div className="bg-app-header border-b border-app-border px-4 py-3 flex items-center justify-between">
+                                                <h4 className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                                                    <i className="fas fa-map text-cyan-400"></i>
+                                                    Peta Lokasi Customer
+                                                </h4>
+                                                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-800/50">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                                    LIVE
+                                                </span>
+                                            </div>
+                                            <div 
+                                                id="lokasi-map-container" 
+                                                className="h-[400px] md:h-[500px] w-full"
+                                                ref={(el) => {
+                                                    if (el && lokasiSearchResult && lokasiSearchResult.latitude && lokasiSearchResult.longitude) {
+                                                        initLokasiMap('lokasi-map-container');
+                                                    }
+                                                }}
+                                            ></div>
+                                            <div className="bg-app-header border-t border-app-border px-4 py-2.5 flex items-center justify-between text-[10px]">
+                                                <span className="text-slate-400 flex items-center gap-1">
+                                                    <i className="fas fa-layer-group text-slate-500"></i>
+                                                    Sumber Peta: OpenStreetMap
+                                                </span>
+                                                <span className="text-slate-400 flex items-center gap-1">
+                                                    <i className="fas fa-hand-pointer text-slate-500"></i>
+                                                    Geser & zoom untuk melihat detail
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Riwayat paket customer jika ada */}
+                                {lokasiSearchResult && lokasiSearchResult.allPackages && lokasiSearchResult.allPackages.length > 0 && (
+                                    <div className="bg-app-card rounded-xl border border-app-border shadow-sm overflow-hidden">
+                                        <div className="bg-app-header border-b border-app-border px-4 py-3 flex items-center justify-between">
+                                            <h4 className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                                                <i className="fas fa-history text-cyan-400"></i>
+                                                Riwayat Paket ({lokasiSearchResult.allPackages.length})
+                                            </h4>
+                                        </div>
+                                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                                            {lokasiSearchResult.allPackages.slice(0, 10).map((pkg, idx) => {
+                                                const { hBarang, tagihan } = getFinancials(pkg);
+                                                return (
+                                                    <div key={idx} className="px-4 py-3 border-b border-app-border/50 hover:bg-app-header/30 transition-colors flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-app-header border border-app-border flex items-center justify-center shrink-0 text-slate-400 text-xs font-bold">
+                                                            {idx + 1}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-0.5">
+                                                                <span className="text-orange-400 font-mono text-[11px] font-bold">{pkg.packageId}</span>
+                                                                <StatusBadgeAdmin status={pkg.status} />
+                                                            </div>
+                                                            <p className="text-slate-400 text-[10px] truncate">
+                                                                <i className="fas fa-store mr-1 text-slate-500"></i>{pkg.olshopName}
+                                                                <span className="mx-1.5 text-slate-600">|</span>
+                                                                <i className="fas fa-motorcycle mr-1 text-slate-500"></i>{String(pkg.kurirId || '-').split('@')[0]}
+                                                            </p>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <p className="text-white font-bold text-xs">{formatCurrency(tagihan)}</p>
+                                                            <p className="text-slate-500 text-[9px]">{pkg.dateString || pkg.tanggal || '-'}</p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {lokasiSearchResult.allPackages.length > 10 && (
+                                                <div className="px-4 py-2 text-center text-slate-500 text-[10px] bg-app-header/30">
+                                                    Dan {lokasiSearchResult.allPackages.length - 10} paket lainnya...
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* VIEW CETAK LAPORAN TERINTEGRASI */}
                         {activeTab === 'cetak' && (
