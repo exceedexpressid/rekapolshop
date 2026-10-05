@@ -141,6 +141,32 @@
             z-index: 99999; flex-direction: column; align-items: center; justify-content: center;
         }
     </style>
+    <style>
+    .gal-grid{display:grid;grid-template-columns:1fr;gap:1rem}
+    @media(min-width:768px){.gal-grid{grid-template-columns:repeat(2,1fr)}}
+    @media(min-width:1024px){.gal-grid{grid-template-columns:repeat(3,1fr)}}
+    .gal-olshop-grid{display:grid;grid-template-columns:1fr;gap:.75rem}
+    @media(min-width:640px){.gal-olshop-grid{grid-template-columns:repeat(2,1fr)}}
+    @media(min-width:1024px){.gal-olshop-grid{grid-template-columns:repeat(3,1fr)}}
+    .gal-accent{color:#f472b6}
+    .gal-bg{background-color:rgba(236,72,153,.08)}
+    .gal-border{border-color:rgba(236,72,153,.35)}
+    .gal-shadow{box-shadow:0 0 15px rgba(236,72,153,.15)}
+    .gal-card-hover{transition:all .15s}
+    .gal-card-hover:hover{border-color:rgba(236,72,153,.55);box-shadow:0 0 15px rgba(236,72,153,.15)}
+    .gal-card-hover:hover .gal-hover-name{color:#fbcfe8}
+    .gal-btn-active{background-color:rgba(236,72,153,.1);color:#f472b6;border:1px solid rgba(236,72,153,.35)}
+    .gal-btn-idle{color:#94a3b8}
+    .gal-btn-idle:hover{background-color:#2a3042;color:#e2e8f0}
+    .gal-photo{position:relative;width:100%;height:220px;background:#0b1120;overflow:hidden;cursor:pointer}
+    .gal-photo img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
+    .gal-photo:hover img{transform:scale(1.05)}
+    .gal-photo-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#475569}
+    .gal-zoom{position:absolute;bottom:8px;right:8px;width:32px;height:32px;border-radius:9999px;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#fff;opacity:0;transition:opacity .2s}
+    .gal-photo:hover .gal-zoom{opacity:1}
+    .gal-badge{position:absolute;top:8px;left:8px;z-index:2}
+    .gal-input:focus{border-color:rgba(236,72,153,.6)!important;outline:none}
+    </style>
 </head>
 <body class="antialiased text-slate-200 selection:bg-emerald-500 selection:text-white">
     
@@ -295,6 +321,8 @@ function DashboardApp() {
   const [expandedKurirs, setExpandedKurirs] = useState([]);
   const [kurirFilters, setKurirFilters] = useState({});
   const [selectedImage, setSelectedImage] = useState(null);
+  const [galeriOlshop, setGaleriOlshop] = useState(null);
+  const [galeriCari, setGaleriCari] = useState('');
   const skemaPct = {
     kurir: 80,
     kas: 5,
@@ -968,7 +996,7 @@ function DashboardApp() {
     className: `w-full flex items-center px-4 py-3 rounded-lg text-sm font-bold transition-all ${activeTab === 'lokasi' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-app-border hover:text-slate-200 border border-transparent'}`
   }, React.createElement("i", {
     className: "fas fa-map-marker-alt w-6 text-center mr-2"
-  }), " Cek Lokasi"))));
+  }), " Cek Lokasi"), React.createElement("button", { onClick: function(){ setGaleriOlshop(null); setActiveTab('galeri'); }, className: "w-full flex items-center px-4 py-3 rounded-lg text-sm font-bold transition-all " + (activeTab === 'galeri' ? 'gal-btn-active' : 'gal-btn-idle') }, React.createElement("i", { className: "fas fa-images w-6 text-center mr-2" }), " Galeri"))));
   const renderMenuGrid = () => React.createElement("div", {
     className: "animate-fade-in mb-2"
   }, React.createElement("p", {
@@ -1029,7 +1057,7 @@ function DashboardApp() {
     className: "fas fa-map-marker-alt text-base"
   })), React.createElement("span", {
     className: `text-[8px] text-center font-black uppercase ${activeTab === 'lokasi' ? 'text-white' : 'text-slate-300'}`
-  }, "Lokasi"))));
+  }, "Lokasi")), React.createElement("button", { onClick: function(){ setGaleriOlshop(null); setActiveTab('galeri'); }, className: "flex flex-col items-center justify-center p-3 rounded-xl border transition-all " + (activeTab === 'galeri' ? 'gal-bg gal-border gal-shadow' : 'bg-app-card border-app-border hover:bg-app-header') }, React.createElement("div", { className: "w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 shadow-inner " + (activeTab === 'galeri' ? 'gal-bg border gal-border' : 'bg-[#151928] gal-accent border border-app-border') }, React.createElement("i", { className: "fas fa-images text-base" })), React.createElement("span", { className: "text-[8px] text-center font-black uppercase " + (activeTab === 'galeri' ? 'text-white' : 'text-slate-300') }, "Galeri"))));
   const normalizePhone = phoneStr => {
     if (!phoneStr) return '';
     let result = String(phoneStr).trim();
@@ -1235,6 +1263,146 @@ function DashboardApp() {
       }
     };
   }, [activeTab]);
+  const renderGaleri = () => {
+    const h = React.createElement;
+    const byOlshop = {};
+    (filteredPkgs || []).forEach(function(p){
+      if (!p) return;
+      const name = String(p.olshopName || 'Tanpa Nama').toUpperCase();
+      if (!byOlshop[name]) byOlshop[name] = [];
+      byOlshop[name].push(p);
+    });
+    const fmtDate = function(p){
+      let s = p.dateString || p.tanggal || '';
+      if (!s) return '-';
+      try {
+        let d = new Date(s);
+        if (isNaN(d.getTime()) && String(s).indexOf('/') >= 0) {
+          const parts = String(s).split('/');
+          if (parts.length === 3) d = new Date(parts[2] + '-' + parts[1] + '-' + parts[0]);
+        }
+        if (!isNaN(d.getTime())) return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch (e) {}
+      return String(s).split('T')[0];
+    };
+    const cari = String(galeriCari || '').toLowerCase().trim();
+
+    if (galeriOlshop && byOlshop[galeriOlshop]) {
+      const pkgs = byOlshop[galeriOlshop];
+      let totalOngkir = 0, totalTagihan = 0;
+      pkgs.forEach(function(p){ totalOngkir += getFinancials(p).oTotal || 0; totalTagihan += Number(p.totalTagihan) || 0; });
+      return h("div", { className: "space-y-4" },
+        h("div", { className: "bg-app-card rounded-xl border border-app-border p-4 flex flex-col md:flex-row md:items-center gap-3 justify-between" },
+          h("div", { className: "flex items-center gap-3 min-w-0" },
+            h("button", { onClick: function(){ setGaleriOlshop(null); }, className: "w-10 h-10 rounded-xl bg-[#151928] border border-app-border flex items-center justify-center gal-accent hover:bg-app-border transition-colors shrink-0" },
+              h("i", { className: "fas fa-arrow-left" })),
+            h("div", { className: "min-w-0" },
+              h("h3", { className: "font-black text-white text-sm md:text-base uppercase flex items-center truncate" },
+                h("i", { className: "fas fa-store gal-accent mr-2 shrink-0" }), " " + galeriOlshop),
+              h("p", { className: "text-[11px] text-slate-400 mt-0.5" }, pkgs.length + " paket \u00b7 Ongkir " + formatCurrency(totalOngkir) + " \u00b7 Total " + formatCurrency(totalTagihan))
+            )
+          ),
+          h("span", { className: "px-3 py-1.5 rounded-lg gal-bg border gal-border gal-accent text-xs font-bold shrink-0" }, pkgs.length + " Paket")
+        ),
+        pkgs.length === 0
+          ? h("div", { className: "bg-app-card rounded-xl border border-app-border p-10 text-center" },
+              h("i", { className: "fas fa-box-open text-4xl text-slate-600 mb-3" }),
+              h("p", { className: "text-slate-400 text-sm font-bold" }, "Tidak ada paket."))
+          : h("div", { className: "gal-grid" },
+              pkgs.map(function(pkg, idx){
+                const fin = getFinancials(pkg);
+                const foto = getFotoUrl(pkg);
+                const tagihan = Number(pkg.totalTagihan) || 0;
+                return h("div", { key: idx, className: "bg-app-card rounded-xl border border-app-border gal-card-hover overflow-hidden shadow-sm flex flex-col" },
+                  h("div", { className: "gal-photo", onClick: function(){ if (foto) setSelectedImage(foto); } },
+                    foto
+                      ? h("img", { src: foto, alt: "Foto Paket", loading: "lazy" })
+                      : h("div", { className: "gal-photo-placeholder" },
+                          h("i", { className: "fas fa-box-open text-4xl mb-2 opacity-40" }),
+                          h("span", { className: "text-[10px] font-bold uppercase tracking-wider opacity-50" }, "Tidak Ada Foto")),
+                    h("div", { className: "gal-badge" }, h(StatusBadgeAdmin, { status: pkg.status })),
+                    foto ? h("div", { className: "gal-zoom" }, h("i", { className: "fas fa-search-plus text-xs" })) : null
+                  ),
+                  h("div", { className: "p-3 flex-1 flex flex-col gap-2" },
+                    h("div", { className: "flex items-start justify-between gap-2" },
+                      h("div", { className: "min-w-0" },
+                        h("p", { className: "text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center" },
+                          h("i", { className: "fas fa-calendar-alt mr-1 gal-accent" }), " Tanggal Paket"),
+                        h("p", { className: "text-xs font-bold text-white mt-0.5" }, fmtDate(pkg))
+                      ),
+                      h("div", { className: "text-right shrink-0" },
+                        h("p", { className: "text-[10px] text-slate-500 font-bold uppercase tracking-wider" }, "Ongkir"),
+                        h("p", { className: "text-xs font-black text-emerald-400 mt-0.5" }, formatCurrency(fin.oTotal))
+                      )
+                    ),
+                    h("div", { className: "flex items-center gap-1.5 text-[11px] text-slate-300" },
+                      h("i", { className: "fas fa-store gal-accent shrink-0" }),
+                      h("span", { className: "truncate font-semibold" }, String(pkg.olshopName || '-').toUpperCase())
+                    ),
+                    h("div", { className: "flex items-center gap-1.5 text-[11px] text-slate-400" },
+                      h("i", { className: "fas fa-user text-slate-500 shrink-0" }),
+                      h("span", { className: "truncate" }, pkg.customerName || '-')
+                    ),
+                    h("div", { className: "pt-2 border-t border-app-border flex items-center justify-between" },
+                      h("span", { className: "text-[10px] text-slate-500 font-bold uppercase" }, "Total Tagihan"),
+                      h("span", { className: "text-sm font-black text-white" }, formatCurrency(tagihan))
+                    )
+                  )
+                );
+              })
+            )
+      );
+    }
+
+    let olshopNames = Object.keys(byOlshop).sort();
+    if (cari) olshopNames = olshopNames.filter(function(n){ return n.toLowerCase().indexOf(cari) >= 0; });
+
+    return h("div", { className: "space-y-4" },
+      h("div", { className: "bg-app-card rounded-xl border border-app-border p-4" },
+        h("h3", { className: "font-bold text-slate-200 text-xs md:text-sm flex items-center" },
+          h("i", { className: "fas fa-images gal-accent mr-2" }), " Galeri Paket per Olshop"),
+        h("p", { className: "text-[10px] text-slate-400 mt-1" }, "Pilih salah satu olshop untuk melihat galeri besar foto paket beserta tanggal, nama olshop, harga ongkir, dan total tagihan."),
+        h("div", { className: "relative mt-3" },
+          h("i", { className: "fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs" }),
+          h("input", { type: "text", value: galeriCari, onChange: function(e){ setGaleriCari(e.target.value); }, placeholder: "Cari nama olshop...", className: "gal-input w-full bg-[#151928] border border-app-border rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 transition-colors" })
+        )
+      ),
+      olshopNames.length === 0
+        ? h("div", { className: "bg-app-card rounded-xl border border-app-border p-10 text-center" },
+            h("i", { className: "fas fa-box-open text-4xl text-slate-600 mb-3" }),
+            h("p", { className: "text-slate-400 text-sm font-bold" }, cari ? "Olshop tidak ditemukan." : "Belum ada data paket."))
+        : h("div", { className: "gal-olshop-grid" },
+            olshopNames.map(function(name, idx){
+              const pkgs = byOlshop[name];
+              let totalOngkir = 0, withFoto = 0;
+              pkgs.forEach(function(p){ totalOngkir += getFinancials(p).oTotal || 0; if (getFotoUrl(p)) withFoto++; });
+              return h("button", { key: idx, onClick: function(){ setGaleriOlshop(name); },
+                className: "text-left bg-app-card rounded-xl border border-app-border gal-card-hover p-4 group" },
+                h("div", { className: "flex items-start justify-between gap-3" },
+                  h("div", { className: "min-w-0 flex-1" },
+                    h("p", { className: "gal-hover-name font-black text-white text-sm uppercase truncate flex items-center transition-colors" },
+                      h("i", { className: "fas fa-store gal-accent mr-2 shrink-0" }), name),
+                    h("p", { className: "text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-wider" }, "Total Ongkir"),
+                    h("p", { className: "text-xs font-bold text-emerald-400 mt-0.5" }, formatCurrency(totalOngkir))
+                  ),
+                  h("div", { className: "text-right shrink-0" },
+                    h("div", { className: "w-12 h-12 rounded-xl gal-bg border gal-border flex flex-col items-center justify-center" },
+                      h("span", { className: "text-lg font-black gal-accent leading-none" }, pkgs.length),
+                      h("span", { className: "text-[8px] gal-accent font-bold uppercase mt-0.5 opacity-80" }, "paket")
+                    ),
+                    h("p", { className: "text-[9px] text-slate-500 mt-1.5 font-bold" }, withFoto + " foto")
+                  )
+                ),
+                h("div", { className: "mt-3 pt-3 border-t border-app-border flex items-center justify-between" },
+                  h("span", { className: "text-[10px] text-slate-500 font-bold uppercase flex items-center" },
+                    h("i", { className: "fas fa-images mr-1 gal-accent" }), " Lihat Galeri"),
+                  h("i", { className: "fas fa-arrow-right gal-accent text-xs" })
+                )
+              );
+            })
+          )
+    );
+  };
   const renderContent = () => {
     return React.createElement("div", {
       className: "animate-fade-in pb-10"
@@ -3366,7 +3534,7 @@ function DashboardApp() {
       className: "text-sm text-slate-800"
     }, "Exceed Express Logistics"), React.createElement("p", {
       className: "font-medium mt-0.5 text-slate-500"
-    }, "Alamat Kantor : Jalan Garuda, BTN Bawah Jayapura, Papua.  No. HP 08215006669"))))));
+    }, "Alamat Kantor : Jalan Garuda, BTN Bawah Jayapura, Papua.  No. HP 08215006669"))))), activeTab === 'galeri' && renderGaleri());
   };
   return React.createElement("div", {
     className: "h-screen bg-app-dark font-sans w-full mx-auto relative flex flex-col overflow-hidden"
@@ -3398,7 +3566,7 @@ function DashboardApp() {
   }, "Cetak Laporan"), React.createElement("button", {
     onClick: () => setActiveTab('lokasi'),
     className: `px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap ${activeTab === 'lokasi' ? 'bg-cyan-500 text-white' : 'bg-app-card text-slate-400 border border-app-border'}`
-  }, "Cek Lokasi")), activeTab !== 'cetak' && renderFilterSection(), activeTab !== 'cetak' && renderStatusSummaryBar(), activeTab !== 'cetak' && renderMetricCards(), isAndroid && activeTab !== 'cetak' && renderMenuGrid(), renderContent()))), selectedImage && React.createElement("div", {
+  }, "Cek Lokasi"), React.createElement("button", { onClick: function(){ setGaleriOlshop(null); setActiveTab('galeri'); }, className: "px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap " + (activeTab === 'galeri' ? 'gal-bg border gal-border gal-accent' : 'bg-app-card text-slate-400 border border-app-border') }, "Galeri")), activeTab !== 'cetak' && renderFilterSection(), activeTab !== 'cetak' && renderStatusSummaryBar(), activeTab !== 'cetak' && renderMetricCards(), isAndroid && activeTab !== 'cetak' && renderMenuGrid(), renderContent()))), selectedImage && React.createElement("div", {
     className: "fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 transition-opacity no-print",
     onClick: () => setSelectedImage(null)
   }, React.createElement("div", {
